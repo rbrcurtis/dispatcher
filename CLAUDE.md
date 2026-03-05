@@ -1,4 +1,4 @@
-# Dispatch
+# Conductor
 
 Personal kanban board + Claude Code orchestration app.
 
