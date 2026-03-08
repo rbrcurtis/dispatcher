@@ -38,7 +38,7 @@ export function CardDetail({ cardId, onClose }: Props) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const { data: allCards } = useQuery(trpc.cards.list.queryOptions());
+  const { data: allCards, isLoading } = useQuery(trpc.cards.list.queryOptions());
   const card = allCards?.find((c) => c.id === cardId);
 
   const { data: projectsList } = useQuery(trpc.projects.list.queryOptions());
@@ -142,7 +142,7 @@ export function CardDetail({ cardId, onClose }: Props) {
   if (!card) {
     return (
       <div className="flex flex-col h-full items-center justify-center text-muted-foreground">
-        Card not found
+        {isLoading ? 'Loading...' : 'Card not found'}
       </div>
     );
   }
