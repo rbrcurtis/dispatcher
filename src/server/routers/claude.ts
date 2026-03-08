@@ -8,6 +8,14 @@ import { sessionManager } from '../claude/manager';
 import type { ClaudeSession } from '../claude/protocol';
 import type { SessionStatus } from '../claude/types';
 
+const fileRefSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  mimeType: z.string(),
+  path: z.string(),
+  size: z.number(),
+});
+
 export const claudeRouter = router({
   start: publicProcedure
     .input(z.object({ cardId: z.number(), prompt: z.string().min(1) }))
@@ -101,7 +109,11 @@ export const claudeRouter = router({
     }),
 
   sendMessage: publicProcedure
-    .input(z.object({ cardId: z.number(), message: z.string().min(1) }))
+    .input(z.object({
+      cardId: z.number(),
+      message: z.string().min(1),
+      files: z.array(fileRefSchema).optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
       let session = sessionManager.get(input.cardId);
 
@@ -154,7 +166,14 @@ export const claudeRouter = router({
         });
       }
 
-      await session.sendUserMessage(input.message);
+      let prompt = input.message;
+      if (input.files?.length) {
+        const fileList = input.files
+          .map((f) => `- ${f.path} (${f.name}, ${f.mimeType})`)
+          .join('\n');
+        prompt = `I've attached the following files for you to review. Use the Read tool to read them:\n${fileList}\n\n${prompt}`;
+      }
+      await session.sendUserMessage(prompt);
       await ctx.db.update(cards)
         .set({ promptsSent: session.promptsSent, updatedAt: new Date().toISOString() })
         .where(eq(cards.id, input.cardId));
