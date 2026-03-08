@@ -318,12 +318,10 @@ function UserBlock({ message, accentColor }: { message: Record<string, unknown>;
   const inner = message.message as { content?: unknown } | undefined;
   if (!inner?.content) return null;
 
-  // Content can be a string or array of blocks
   let text: string | null = null;
   if (typeof inner.content === 'string') {
     text = inner.content;
   } else if (Array.isArray(inner.content)) {
-    // Extract text from content blocks, skip tool_result blocks
     const parts = (inner.content as Array<{ type: string; text?: string }>)
       .filter((b) => b.type === 'text' && b.text)
       .map((b) => b.text!);
@@ -332,9 +330,22 @@ function UserBlock({ message, accentColor }: { message: Record<string, unknown>;
 
   if (!text) return null;
 
-  // Skip Claude Code internal messages (commands, system reminders, etc.)
   if (text.includes('<command-name>') || text.includes('<local-command-') || text.includes('<system-reminder>')) {
     return null;
+  }
+
+  // Extract file attachments from prompt prefix
+  const fileMatch = text.match(/^I've attached the following files for you to review\. Use the Read tool to read them:\n((?:- .+\n)+)\n([\s\S]*)$/);
+  let attachedFiles: { name: string; mimeType: string }[] = [];
+  let displayText = text;
+
+  if (fileMatch) {
+    const fileLines = fileMatch[1].trim().split('\n');
+    attachedFiles = fileLines.map((line) => {
+      const m = line.match(/^- .+\((.+?), (.+?)\)$/);
+      return m ? { name: m[1], mimeType: m[2] } : { name: line, mimeType: '' };
+    });
+    displayText = fileMatch[2] || '';
   }
 
   const accentVar = accentColor ? `var(--${accentColor})` : 'var(--neon-cyan)';
@@ -345,8 +356,20 @@ function UserBlock({ message, accentColor }: { message: Record<string, unknown>;
         className="group relative text-sm text-foreground bg-elevated rounded-lg px-3 py-2 max-w-[85%] border-l-2"
         style={{ borderLeftColor: accentVar }}
       >
-        <CopyButton text={text} />
-        <Markdown text={text} linkColor={accentVar} />
+        <CopyButton text={displayText || text} />
+        {attachedFiles.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {attachedFiles.map((f, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-xs text-muted-foreground border border-border"
+              >
+                {f.name}
+              </span>
+            ))}
+          </div>
+        )}
+        {displayText && <Markdown text={displayText} linkColor={accentVar} />}
       </div>
     </div>
   );
