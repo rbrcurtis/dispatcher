@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Settings, Palette } from 'lucide-react';
 import { Button } from '~/components/ui/button';
@@ -70,7 +70,8 @@ export default function BoardLayout() {
     setNewCardColumn(column);
   }
 
-  // Keyboard shortcuts (layout-level)
+  // Keyboard shortcuts (layout-level) — selectCard omitted from deps intentionally; it's not memoized
+  // and adding it would re-register the listener on every render
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement).tagName;
@@ -90,7 +91,7 @@ export default function BoardLayout() {
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [activeModal]);
+  }, [activeModal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="h-screen flex flex-col bg-background">
