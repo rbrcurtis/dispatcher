@@ -10,7 +10,6 @@ import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { TRPCProvider, makeTRPCClient } from '~/lib/trpc';
 import { persister } from '~/lib/query-persist';
-import { useState } from 'react';
 
 import type { Route } from "./+types/root";
 import "./app.css";
@@ -55,12 +54,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: { queries: { gcTime: Infinity } },
-  }));
-  const [trpcClient] = useState(() => makeTRPCClient());
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { gcTime: Infinity } },
+});
+const trpcClient = makeTRPCClient();
 
+export default function App() {
   return (
     <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
       <PersistQueryClientProvider
