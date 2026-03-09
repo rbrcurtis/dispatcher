@@ -12,3 +12,4 @@ build/
 data/
 .playwright-mcp/*
 .private-journal/*
+.worktrees/*
