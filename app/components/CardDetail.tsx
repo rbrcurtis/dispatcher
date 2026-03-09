@@ -55,7 +55,7 @@ export function CardDetail({ cardId, onClose }: Props) {
 
   const [formOpen, setFormOpen] = useState(true);
 
-  // Sync draft from card data
+  // Sync draft from card data — keyed on card.id only to initialize form + collapse state once per card
   useEffect(() => {
     if (!card) return;
     setDraft({
@@ -67,9 +67,9 @@ export function CardDetail({ cardId, onClose }: Props) {
     });
     // Auto-collapse when session exists or card is active
     setFormOpen(!card.sessionId && card.column !== 'in_progress' && card.column !== 'review' && card.column !== 'done' && card.column !== 'archive');
-  }, [card?.id]);
+  }, [card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-sync fields on update (but don't reset formOpen)
+  // Re-sync fields on update (but don't reset formOpen) — keyed on updatedAt to avoid resetting collapse state
   useEffect(() => {
     if (!card) return;
     setDraft({
@@ -79,7 +79,7 @@ export function CardDetail({ cardId, onClose }: Props) {
       useWorktree: card.useWorktree,
       sourceBranch: card.sourceBranch,
     });
-  }, [card?.updatedAt]);
+  }, [card?.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDirty = card
     ? draft.title !== card.title ||

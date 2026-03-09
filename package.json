@@ -7,7 +7,9 @@
     "dev": "cross-env NODE_ENV=development node server.js",
     "start": "node server.js",
     "typecheck": "react-router typegen && tsc -b",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "lint": "eslint . --fix --max-warnings 0",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.2.71",
@@ -43,6 +45,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@react-router/dev": "7.12.0",
     "@tailwindcss/vite": "^4.1.13",
     "@types/better-sqlite3": "^7.6.13",
@@ -53,8 +56,13 @@
     "@types/node": "^22",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.57.0",
+    "@typescript-eslint/parser": "^8.57.0",
     "cross-env": "^10.0.0",
     "drizzle-kit": "^0.31.9",
+    "eslint": "^10.0.3",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "prettier": "^3.8.1",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",

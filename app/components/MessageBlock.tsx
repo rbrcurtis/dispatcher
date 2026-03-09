@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, type ComponentProps } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { ChevronRight, ChevronDown, Copy, Check } from 'lucide-react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';

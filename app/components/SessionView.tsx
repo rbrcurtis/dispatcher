@@ -91,17 +91,17 @@ export function SessionView({ cardId, sessionId, accentColor, model, thinkingLev
   const turnsCompleted = statusData?.turnsCompleted ?? 0;
 
   const isStreaming = sessionActive || subscribing;
-  const history = (historyData as Record<string, unknown>[] | undefined) ?? [];
 
   // Merge: history + optimistic pending prompt + live subscription data
   const messages = useMemo(() => {
+    const history = (historyData as Record<string, unknown>[] | undefined) ?? [];
     const result = [...history];
     if (pendingPrompt) {
       result.push({ type: 'user', message: { role: 'user', content: pendingPrompt } });
     }
     result.push(...liveMessages);
     return result;
-  }, [history, liveMessages, pendingPrompt]);
+  }, [historyData, liveMessages, pendingPrompt]);
 
   // Extract tool outputs from all messages
   const toolOutputs = useMemo(() => {
@@ -486,7 +486,7 @@ function PromptInput({
   // Sync text to localStorage on every change
   function updateText(val: string) {
     setText(val);
-    try { if (val) localStorage.setItem(storageKey, val); else localStorage.removeItem(storageKey); } catch {}
+    try { if (val) localStorage.setItem(storageKey, val); else localStorage.removeItem(storageKey); } catch { /* localStorage unavailable */ }
   }
 
   // Reload draft when switching cards
