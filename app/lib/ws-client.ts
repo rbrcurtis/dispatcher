@@ -14,6 +14,7 @@ export class WsClient {
   private reconnectAttempt = 0
   private maxReconnectDelay = 30_000
   private disposed = false
+  private sendQueue: string[] = []
 
   constructor(onEntity: EntityHandler) {
     this.onEntity = onEntity
@@ -33,6 +34,11 @@ export class WsClient {
       if (this.subscribedColumns.length > 0) {
         this.send({ type: 'subscribe', columns: this.subscribedColumns })
       }
+      // Flush messages queued while connecting
+      for (const raw of this.sendQueue) {
+        this.ws!.send(raw)
+      }
+      this.sendQueue = []
     }
     this.ws.onmessage = (evt) => this.handleRaw(evt.data as string)
     this.ws.onclose = () => { if (!this.disposed) this.scheduleReconnect() }
@@ -47,6 +53,7 @@ export class WsClient {
       p.reject(new Error('WebSocket disconnected'))
     }
     this.pending.clear()
+    this.sendQueue = []
     setTimeout(() => this.connect(), delay)
   }
 
@@ -73,7 +80,12 @@ export class WsClient {
   get connected(): boolean { return this.ws?.readyState === WebSocket.OPEN }
 
   send(msg: ClientMessage) {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg))
+    const raw = JSON.stringify(msg)
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(raw)
+    } else if (this.ws?.readyState === WebSocket.CONNECTING) {
+      this.sendQueue.push(raw)
+    }
   }
 
   subscribe(columns: Column[]) {
