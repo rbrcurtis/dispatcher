@@ -39,11 +39,17 @@ function registerHandlers(
   mutator: DbMutator,
 ) {
   session.on('message', async (msg: Record<string, unknown>) => {
-    // Forward every message to the WS client
+    // Forward every message to the WS client, wrapping raw SDK message
+    const wrapped: ClaudeMessage = {
+      type: msg.type as ClaudeMessage['type'],
+      message: msg,
+      ...(msg.isSidechain !== undefined && { isSidechain: msg.isSidechain as boolean }),
+      ...(msg.ts !== undefined && { ts: msg.ts as string }),
+    }
     connections.send(ws, {
       type: 'claude:message',
       cardId,
-      data: msg as unknown as ClaudeMessage,
+      data: wrapped,
     })
 
     // On result messages, persist counters to DB

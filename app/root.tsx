@@ -75,18 +75,24 @@ if (import.meta.hot) {
   });
 }
 
-// Module-level singleton (survives HMR)
-let rootStore: RootStore;
-if (!(globalThis as Record<string, unknown>).__rootStore) {
-  rootStore = new RootStore();
-  persistStore(rootStore.cards, 'dispatcher:cards');
-  persistStore(rootStore.projects, 'dispatcher:projects');
-  (globalThis as Record<string, unknown>).__rootStore = rootStore;
-} else {
-  rootStore = (globalThis as Record<string, unknown>).__rootStore as RootStore;
+// Module-level singleton (survives HMR) — client only
+let rootStore: RootStore | null = null;
+if (typeof window !== 'undefined') {
+  if (!(globalThis as Record<string, unknown>).__rootStore) {
+    rootStore = new RootStore();
+    persistStore(rootStore.cards, 'dispatcher:cards');
+    persistStore(rootStore.projects, 'dispatcher:projects');
+    (globalThis as Record<string, unknown>).__rootStore = rootStore;
+  } else {
+    rootStore = (globalThis as Record<string, unknown>).__rootStore as RootStore;
+  }
 }
 
 export default function App() {
+  if (!rootStore) {
+    // SSR: render empty shell, client will hydrate with store
+    return <div id="ssr-shell" />;
+  }
   return (
     <StoreProvider store={rootStore}>
       <Outlet />

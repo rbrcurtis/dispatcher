@@ -1,6 +1,7 @@
 import { makeAutoObservable } from 'mobx'
 import type { Card, Column } from '../../src/shared/ws-protocol'
 import type { WsClient } from '../lib/ws-client'
+import { uuid } from '../lib/utils'
 
 let _ws: WsClient | null = null
 
@@ -67,7 +68,7 @@ export class CardStore {
     useWorktree?: boolean
     sourceBranch?: 'main' | 'dev' | null
   }): Promise<Card> {
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     const card = await ws().mutate<Card>({
       type: 'card:create',
       requestId,
@@ -100,7 +101,7 @@ export class CardStore {
     const existing = this.cards.get(data.id)
     if (existing) this.cards.set(data.id, { ...existing, ...data } as Card)
 
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     try {
       const card = await ws().mutate<Card>({
         type: 'card:update',
@@ -125,7 +126,7 @@ export class CardStore {
       })
     }
 
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     try {
       await ws().mutate({ type: 'card:move', requestId, data })
     } catch (err) {
@@ -138,7 +139,7 @@ export class CardStore {
     const existing = this.cards.get(id)
     this.cards.delete(id)
 
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     try {
       await ws().mutate({ type: 'card:delete', requestId, data: { id } })
     } catch (err) {
@@ -148,7 +149,7 @@ export class CardStore {
   }
 
   async generateTitle(id: number): Promise<void> {
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     await ws().mutate({ type: 'card:generateTitle', requestId, data: { id } })
   }
 }
