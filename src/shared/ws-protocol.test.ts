@@ -55,15 +55,30 @@ describe('cardSchema', () => {
 
 describe('clientMessage', () => {
   it('parses subscribe', () => {
-    const msg = { type: 'subscribe', data: { column: 'ready' } }
+    const msg = { type: 'subscribe', columns: ['backlog', 'ready'] }
     const result = clientMessage.safeParse(msg)
     expect(result.success).toBe(true)
     if (result.success) expect(result.data.type).toBe('subscribe')
   })
 
+  it('parses page', () => {
+    const msg = { type: 'page', column: 'backlog', limit: 20 }
+    const result = clientMessage.safeParse(msg)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.type).toBe('page')
+  })
+
+  it('parses search', () => {
+    const msg = { type: 'search', query: 'foo', requestId: 'r1' }
+    const result = clientMessage.safeParse(msg)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.type).toBe('search')
+  })
+
   it('parses card:move', () => {
     const msg = {
       type: 'card:move',
+      requestId: 'r1',
       data: { id: 5, column: 'in_progress', position: 2.0 },
     }
     const result = clientMessage.safeParse(msg)
@@ -84,23 +99,32 @@ describe('serverMessage', () => {
   it('parses sync', () => {
     const msg = {
       type: 'sync',
-      data: {
-        cards: [],
-        projects: [],
-      },
+      cards: [],
+      projects: [],
     }
     const result = serverMessage.safeParse(msg)
     expect(result.success).toBe(true)
   })
 
-  it('parses mutation:ok', () => {
-    const msg = {
-      type: 'mutation:ok',
-      data: { requestId: 'req-1', result: { id: 42 } },
-    }
+  it('parses mutation:ok without data', () => {
+    const msg = { type: 'mutation:ok', requestId: 'req-1' }
     const result = serverMessage.safeParse(msg)
     expect(result.success).toBe(true)
     if (result.success) expect(result.data.type).toBe('mutation:ok')
+  })
+
+  it('parses mutation:ok with data', () => {
+    const msg = { type: 'mutation:ok', requestId: 'req-1', data: { id: 42 } }
+    const result = serverMessage.safeParse(msg)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.type).toBe('mutation:ok')
+  })
+
+  it('parses mutation:error', () => {
+    const msg = { type: 'mutation:error', requestId: 'req-1', error: 'something went wrong' }
+    const result = serverMessage.safeParse(msg)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.type).toBe('mutation:error')
   })
 
   it('parses card:updated', () => {
@@ -124,9 +148,23 @@ describe('serverMessage', () => {
       createdAt: '2024-01-01T00:00:00',
       updatedAt: '2024-01-02T00:00:00',
     }
-    const msg = { type: 'card:updated', data: { card } }
+    const msg = { type: 'card:updated', data: card }
     const result = serverMessage.safeParse(msg)
     expect(result.success).toBe(true)
     if (result.success) expect(result.data.type).toBe('card:updated')
+  })
+
+  it('parses page:result', () => {
+    const msg = { type: 'page:result', column: 'backlog', cards: [], total: 0 }
+    const result = serverMessage.safeParse(msg)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.type).toBe('page:result')
+  })
+
+  it('parses search:result', () => {
+    const msg = { type: 'search:result', requestId: 'r1', cards: [], total: 0 }
+    const result = serverMessage.safeParse(msg)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.type).toBe('search:result')
   })
 })

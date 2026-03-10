@@ -11,16 +11,16 @@ export async function handleProjectCreate(
   msg: Extract<ClientMessage, { type: 'project:create' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
-  requestId: string,
 ): Promise<void> {
+  const { requestId } = msg
   try {
     const input = msg.data
     const isGitRepo = existsSync(join(input.path, '.git'))
     const project = mutator.createProject({ ...input, isGitRepo })
-    connections.send(ws, { type: 'mutation:ok', data: { requestId, result: project } })
+    connections.send(ws, { type: 'mutation:ok', requestId, data: project })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    connections.send(ws, { type: 'mutation:error', data: { requestId, error } })
+    connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }
 
@@ -29,8 +29,8 @@ export async function handleProjectUpdate(
   msg: Extract<ClientMessage, { type: 'project:update' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
-  requestId: string,
 ): Promise<void> {
+  const { requestId } = msg
   try {
     const { id, ...data } = msg.data
     const updates: Record<string, unknown> = { ...data }
@@ -38,10 +38,10 @@ export async function handleProjectUpdate(
       updates.isGitRepo = existsSync(join(data.path, '.git'))
     }
     const project = mutator.updateProject(id, updates)
-    connections.send(ws, { type: 'mutation:ok', data: { requestId, result: project } })
+    connections.send(ws, { type: 'mutation:ok', requestId, data: project })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    connections.send(ws, { type: 'mutation:error', data: { requestId, error } })
+    connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }
 
@@ -50,14 +50,14 @@ export function handleProjectDelete(
   msg: Extract<ClientMessage, { type: 'project:delete' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
-  requestId: string,
 ): void {
+  const { requestId } = msg
   try {
     mutator.deleteProject(msg.data.id)
-    connections.send(ws, { type: 'mutation:ok', data: { requestId, result: null } })
+    connections.send(ws, { type: 'mutation:ok', requestId })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    connections.send(ws, { type: 'mutation:error', data: { requestId, error } })
+    connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }
 
@@ -66,7 +66,7 @@ export async function handleProjectBrowse(
   msg: Extract<ClientMessage, { type: 'project:browse' }>,
   connections: ConnectionManager,
 ): Promise<void> {
-  const { path, requestId } = msg.data
+  const { requestId, data: { path } } = msg
   try {
     const fsEntries = await readdir(path, { withFileTypes: true })
     const isGitRepo = fsEntries.some(e => e.name === '.git' && e.isDirectory())
@@ -77,7 +77,8 @@ export async function handleProjectBrowse(
 
     connections.send(ws, {
       type: 'project:browse:result',
-      data: { requestId, entries: dirs },
+      requestId,
+      data: dirs,
     })
 
     // NOTE: isGitRepo for the browsed path is not in the protocol browse:result shape.
@@ -86,7 +87,8 @@ export async function handleProjectBrowse(
   } catch {
     connections.send(ws, {
       type: 'project:browse:result',
-      data: { requestId, entries: [] },
+      requestId,
+      data: [],
     })
   }
 }

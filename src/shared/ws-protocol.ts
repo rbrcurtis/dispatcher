@@ -91,7 +91,7 @@ export const claudeMessageSchema = z.object({
   type: z.enum(['user', 'assistant', 'result', 'system']),
   message: z.record(z.string(), z.unknown()),
   isSidechain: z.boolean().optional(),
-  ts: z.number().optional(),
+  ts: z.string().optional(),
 })
 
 export type ClaudeStatus = z.infer<typeof claudeStatusSchema>
@@ -100,27 +100,30 @@ export type ClaudeMessage = z.infer<typeof claudeMessageSchema>
 // ── Client → Server messages ─────────────────────────────────────────────────
 
 export const clientMessage = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('subscribe'), data: z.object({ column: columnEnum.optional() }) }),
-  z.object({ type: z.literal('page'), data: z.object({ column: columnEnum, cursor: z.number().optional() }) }),
-  z.object({ type: z.literal('search'), data: z.object({ query: z.string(), requestId: z.string() }) }),
+  // No requestId — subscription control
+  z.object({ type: z.literal('subscribe'), columns: z.array(columnEnum) }),
+  z.object({ type: z.literal('page'), column: columnEnum, cursor: z.number().optional(), limit: z.number() }),
 
-  z.object({ type: z.literal('card:create'), data: cardCreateSchema }),
-  z.object({ type: z.literal('card:update'), data: cardUpdateSchema }),
-  z.object({ type: z.literal('card:move'), data: cardMoveSchema }),
-  z.object({ type: z.literal('card:delete'), data: z.object({ id: z.number() }) }),
-  z.object({ type: z.literal('card:generateTitle'), data: z.object({ id: z.number() }) }),
+  // Has requestId — request/response
+  z.object({ type: z.literal('search'), query: z.string(), requestId: z.string() }),
 
-  z.object({ type: z.literal('project:create'), data: projectCreateSchema }),
-  z.object({ type: z.literal('project:update'), data: projectUpdateSchema }),
-  z.object({ type: z.literal('project:delete'), data: z.object({ id: z.number() }) }),
-  z.object({ type: z.literal('project:browse'), data: z.object({ path: z.string(), requestId: z.string() }) }),
+  z.object({ type: z.literal('card:create'), requestId: z.string(), data: cardCreateSchema }),
+  z.object({ type: z.literal('card:update'), requestId: z.string(), data: cardUpdateSchema }),
+  z.object({ type: z.literal('card:move'), requestId: z.string(), data: cardMoveSchema }),
+  z.object({ type: z.literal('card:delete'), requestId: z.string(), data: z.object({ id: z.number() }) }),
+  z.object({ type: z.literal('card:generateTitle'), requestId: z.string(), data: z.object({ id: z.number() }) }),
 
-  z.object({ type: z.literal('claude:start'), data: claudeStartSchema }),
-  z.object({ type: z.literal('claude:send'), data: claudeSendSchema }),
-  z.object({ type: z.literal('claude:stop'), data: z.object({ cardId: z.number() }) }),
-  z.object({ type: z.literal('claude:status'), data: z.object({ cardId: z.number() }) }),
+  z.object({ type: z.literal('project:create'), requestId: z.string(), data: projectCreateSchema }),
+  z.object({ type: z.literal('project:update'), requestId: z.string(), data: projectUpdateSchema }),
+  z.object({ type: z.literal('project:delete'), requestId: z.string(), data: z.object({ id: z.number() }) }),
+  z.object({ type: z.literal('project:browse'), requestId: z.string(), data: z.object({ path: z.string() }) }),
 
-  z.object({ type: z.literal('session:load'), data: z.object({ sessionId: z.string(), cardId: z.number() }) }),
+  z.object({ type: z.literal('claude:start'), requestId: z.string(), data: claudeStartSchema }),
+  z.object({ type: z.literal('claude:send'), requestId: z.string(), data: claudeSendSchema }),
+  z.object({ type: z.literal('claude:stop'), requestId: z.string(), data: z.object({ cardId: z.number() }) }),
+  z.object({ type: z.literal('claude:status'), requestId: z.string(), data: z.object({ cardId: z.number() }) }),
+
+  z.object({ type: z.literal('session:load'), requestId: z.string(), data: z.object({ sessionId: z.string(), cardId: z.number() }) }),
 ])
 
 export type ClientMessage = z.infer<typeof clientMessage>
@@ -128,24 +131,27 @@ export type ClientMessage = z.infer<typeof clientMessage>
 // ── Server → Client messages ─────────────────────────────────────────────────
 
 export const serverMessage = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('mutation:ok'), data: z.object({ requestId: z.string(), result: z.unknown() }) }),
-  z.object({ type: z.literal('mutation:error'), data: z.object({ requestId: z.string(), error: z.string() }) }),
+  z.object({ type: z.literal('mutation:ok'), requestId: z.string(), data: z.unknown().optional() }),
+  z.object({ type: z.literal('mutation:error'), requestId: z.string(), error: z.string() }),
 
-  z.object({ type: z.literal('sync'), data: z.object({ cards: z.array(cardSchema), projects: z.array(projectSchema) }) }),
-  z.object({ type: z.literal('card:updated'), data: z.object({ card: cardSchema }) }),
+  z.object({ type: z.literal('sync'), cards: z.array(cardSchema), projects: z.array(projectSchema) }),
+  z.object({ type: z.literal('card:updated'), data: cardSchema }),
   z.object({ type: z.literal('card:deleted'), data: z.object({ id: z.number() }) }),
-  z.object({ type: z.literal('project:updated'), data: z.object({ project: projectSchema }) }),
+  z.object({ type: z.literal('project:updated'), data: projectSchema }),
   z.object({ type: z.literal('project:deleted'), data: z.object({ id: z.number() }) }),
 
-  z.object({ type: z.literal('page:result'), data: z.object({ requestId: z.string(), column: columnEnum, cards: z.array(cardSchema), hasMore: z.boolean() }) }),
-  z.object({ type: z.literal('search:result'), data: z.object({ requestId: z.string(), cards: z.array(cardSchema) }) }),
+  z.object({
+    type: z.literal('page:result'), column: columnEnum,
+    cards: z.array(cardSchema), nextCursor: z.number().optional(), total: z.number(),
+  }),
+  z.object({ type: z.literal('search:result'), requestId: z.string(), cards: z.array(cardSchema), total: z.number() }),
 
-  z.object({ type: z.literal('session:history'), data: z.object({ requestId: z.string().optional(), cardId: z.number(), messages: z.array(claudeMessageSchema) }) }),
+  z.object({ type: z.literal('session:history'), requestId: z.string(), cardId: z.number(), messages: z.array(claudeMessageSchema) }),
 
-  z.object({ type: z.literal('claude:message'), data: claudeMessageSchema }),
+  z.object({ type: z.literal('claude:message'), cardId: z.number(), data: claudeMessageSchema }),
   z.object({ type: z.literal('claude:status'), data: claudeStatusSchema }),
 
-  z.object({ type: z.literal('project:browse:result'), data: z.object({ requestId: z.string(), entries: z.array(z.object({ name: z.string(), path: z.string(), isDir: z.boolean() })) }) }),
+  z.object({ type: z.literal('project:browse:result'), requestId: z.string(), data: z.unknown() }),
 ])
 
 export type ServerMessage = z.infer<typeof serverMessage>

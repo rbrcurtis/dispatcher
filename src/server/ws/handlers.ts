@@ -4,7 +4,7 @@ import type { DbMutator } from '../db/mutator'
 import { clientMessage } from '../../shared/ws-protocol'
 import { db } from '../db/index'
 import { cards } from '../db/schema'
-import { like, or, asc } from 'drizzle-orm'
+import { like, or, asc, count } from 'drizzle-orm'
 import {
   handleCardCreate,
   handleCardUpdate,
@@ -32,47 +32,47 @@ export function handleMessage(
   if (!parsed.success) {
     connections.send(ws, {
       type: 'mutation:error',
-      data: {
-        requestId: (raw as Record<string, unknown>)?.requestId as string ?? 'unknown',
-        error: `Invalid message: ${parsed.error.message}`,
-      },
+      requestId: (raw as Record<string, unknown>)?.requestId as string ?? 'unknown',
+      error: `Invalid message: ${parsed.error.message}`,
     })
     return
   }
 
   const msg = parsed.data
-  const requestId = 'requestId' in msg.data
-    ? (msg.data as Record<string, unknown>).requestId as string
-    : msg.type
 
   switch (msg.type) {
     case 'subscribe': {
-      const cols = msg.data.column ? [msg.data.column] : []
-      connections.subscribe(ws, cols)
-      const syncCards = mutator.listCards(cols.length > 0 ? cols : undefined)
+      connections.subscribe(ws, msg.columns)
+      const syncCards = mutator.listCards(msg.columns.length > 0 ? msg.columns : undefined)
       const syncProjects = mutator.listProjects()
-      connections.send(ws, { type: 'sync', data: { cards: syncCards, projects: syncProjects } })
+      connections.send(ws, { type: 'sync', cards: syncCards, projects: syncProjects })
       break
     }
 
     case 'page': {
-      const { column, cursor } = msg.data
+      const { column, cursor, limit } = msg
       const allCards = mutator.listCards([column])
       const sorted = allCards.sort((a, b) => a.position - b.position)
       const startIdx = cursor !== undefined
         ? sorted.findIndex(c => c.id === cursor) + 1
         : 0
-      const slice = sorted.slice(startIdx, startIdx + PAGE_SIZE)
-      const hasMore = startIdx + PAGE_SIZE < sorted.length
+      const pageSize = limit ?? PAGE_SIZE
+      const slice = sorted.slice(startIdx, startIdx + pageSize)
+      const nextCursor = startIdx + pageSize < sorted.length
+        ? slice[slice.length - 1]?.id
+        : undefined
       connections.send(ws, {
         type: 'page:result',
-        data: { requestId: column, column, cards: slice, hasMore },
+        column,
+        cards: slice,
+        nextCursor,
+        total: sorted.length,
       })
       break
     }
 
     case 'search': {
-      const { query, requestId: searchReqId } = msg.data
+      const { query, requestId } = msg
       const pattern = `%${query}%`
       const results = db
         .select()
@@ -80,43 +80,50 @@ export function handleMessage(
         .where(or(like(cards.title, pattern), like(cards.description, pattern)))
         .orderBy(asc(cards.position))
         .all()
+      const [{ value: total }] = db
+        .select({ value: count() })
+        .from(cards)
+        .where(or(like(cards.title, pattern), like(cards.description, pattern)))
+        .all()
       connections.send(ws, {
         type: 'search:result',
-        data: { requestId: searchReqId, cards: results },
+        requestId,
+        cards: results,
+        total,
       })
       break
     }
 
     case 'card:create':
-      void handleCardCreate(ws, msg, connections, mutator, requestId)
+      void handleCardCreate(ws, msg, connections, mutator)
       break
 
     case 'card:update':
-      void handleCardUpdate(ws, msg, connections, mutator, requestId)
+      void handleCardUpdate(ws, msg, connections, mutator)
       break
 
     case 'card:move':
-      void handleCardMove(ws, msg, connections, mutator, requestId)
+      void handleCardMove(ws, msg, connections, mutator)
       break
 
     case 'card:delete':
-      handleCardDelete(ws, msg, connections, mutator, requestId)
+      handleCardDelete(ws, msg, connections, mutator)
       break
 
     case 'card:generateTitle':
-      void handleCardGenerateTitle(ws, msg, connections, mutator, requestId)
+      void handleCardGenerateTitle(ws, msg, connections, mutator)
       break
 
     case 'project:create':
-      void handleProjectCreate(ws, msg, connections, mutator, requestId)
+      void handleProjectCreate(ws, msg, connections, mutator)
       break
 
     case 'project:update':
-      void handleProjectUpdate(ws, msg, connections, mutator, requestId)
+      void handleProjectUpdate(ws, msg, connections, mutator)
       break
 
     case 'project:delete':
-      handleProjectDelete(ws, msg, connections, mutator, requestId)
+      handleProjectDelete(ws, msg, connections, mutator)
       break
 
     case 'project:browse':
@@ -131,10 +138,8 @@ export function handleMessage(
       // Claude messages handled elsewhere (claude:start, claude:send, claude:stop, claude:status)
       connections.send(ws, {
         type: 'mutation:error',
-        data: {
-          requestId,
-          error: `Handler not implemented: ${(msg as { type: string }).type}`,
-        },
+        requestId: (msg as { requestId?: string }).requestId ?? 'unknown',
+        error: `Handler not implemented: ${(msg as { type: string }).type}`,
       })
   }
 }
