@@ -83,30 +83,24 @@ const ActiveBoard = observer(function ActiveBoard() {
   const projectStore = useProjectStore();
   const sessionStore = useSessionStore();
 
-  // Build color map from projects
-  const colorMap = useMemo(() => {
-    const map: Record<number, string> = {};
-    for (const p of projectStore.all) {
-      if (p.color) map[p.id] = p.color;
-    }
-    return map;
-  }, [projectStore.all]);
+  // Build color map from projects (no useMemo — observer tracks MobX reads)
+  const colorMap: Record<number, string> = {};
+  for (const p of projectStore.all) {
+    if (p.color) colorMap[p.id] = p.color;
+  }
 
-  // Read store cards per column (MobX reactive)
-  const storeColumns = useMemo((): ColumnCards => {
-    const result = {
-      backlog: [],
-      ready: [],
-      in_progress: [],
-      review: [],
-      done: [],
-      archive: [],
-    } as ColumnCards;
-    for (const col of ACTIVE_COLUMNS) {
-      result[col] = cardStore.cardsByColumn(col).map(c => enrichCard(c, colorMap));
-    }
-    return result;
-  }, [cardStore.cards, colorMap]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Read store cards per column (no useMemo — observer tracks MobX reads)
+  const storeColumns: ColumnCards = {
+    backlog: [],
+    ready: [],
+    in_progress: [],
+    review: [],
+    done: [],
+    archive: [],
+  };
+  for (const col of ACTIVE_COLUMNS) {
+    storeColumns[col] = cardStore.cardsByColumn(col).map(c => enrichCard(c, colorMap));
+  }
 
   // During drag: local override; after drag ends: null → use storeColumns
   const [dragOverride, setDragOverride] = useState<ColumnCards | null>(null);

@@ -1,6 +1,7 @@
 import { makeAutoObservable } from 'mobx'
 import type { Project } from '../../src/shared/ws-protocol'
 import type { WsClient } from '../lib/ws-client'
+import { uuid } from '../lib/utils'
 
 let _ws: WsClient | null = null
 
@@ -65,7 +66,7 @@ export class ProjectStore {
     defaultThinkingLevel?: 'off' | 'low' | 'medium' | 'high'
     color?: string | null
   }): Promise<Project> {
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     const project = await ws().mutate<Project>({
       type: 'project:create',
       requestId,
@@ -89,7 +90,7 @@ export class ProjectStore {
     const existing = this.projects.get(data.id)
     if (existing) this.projects.set(data.id, { ...existing, ...data } as Project)
 
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     try {
       const project = await ws().mutate<Project>({
         type: 'project:update',
@@ -108,7 +109,7 @@ export class ProjectStore {
     const existing = this.projects.get(id)
     this.projects.delete(id)
 
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     try {
       await ws().mutate({ type: 'project:delete', requestId, data: { id } })
     } catch (err) {
@@ -118,7 +119,7 @@ export class ProjectStore {
   }
 
   async browse(path: string): Promise<unknown> {
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     return ws().mutate({ type: 'project:browse', requestId, data: { path } })
   }
 }

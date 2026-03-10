@@ -1,6 +1,7 @@
 import { makeAutoObservable, observable } from 'mobx'
 import type { ClaudeMessage, ClaudeStatus, FileRef } from '../../src/shared/ws-protocol'
 import type { WsClient } from '../lib/ws-client'
+import { uuid } from '../lib/utils'
 
 let _ws: WsClient | null = null
 
@@ -105,7 +106,7 @@ export class SessionStore {
     s.status = 'starting'
     s.liveMessages = []
 
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     await ws().mutate({
       type: 'claude:start',
       requestId,
@@ -114,7 +115,7 @@ export class SessionStore {
   }
 
   async sendMessage(cardId: number, message: string, files?: FileRef[]): Promise<void> {
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     await ws().mutate({
       type: 'claude:send',
       requestId,
@@ -123,7 +124,7 @@ export class SessionStore {
   }
 
   async stopSession(cardId: number): Promise<void> {
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     await ws().mutate({
       type: 'claude:stop',
       requestId,
@@ -132,7 +133,7 @@ export class SessionStore {
   }
 
   async requestStatus(cardId: number): Promise<void> {
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     await ws().mutate({
       type: 'claude:status',
       requestId,
@@ -141,7 +142,7 @@ export class SessionStore {
   }
 
   async loadHistory(cardId: number, sessionId: string): Promise<void> {
-    const requestId = crypto.randomUUID()
+    const requestId = uuid()
     await ws().mutate({
       type: 'session:load',
       requestId,

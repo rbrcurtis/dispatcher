@@ -6,6 +6,5 @@ export default [
     route("backlog", "routes/board.backlog.tsx"),
     route("archive", "routes/board.archive.tsx"),
   ]),
-  route("api/trpc/*", "routes/api.trpc.$.ts"),
   route("api/upload", "routes/api.upload.ts"),
 ] satisfies RouteConfig;

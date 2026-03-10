@@ -12,7 +12,8 @@ export function persistStore<T extends Persistable>(store: T, key: string) {
   })
 
   autorun(() => {
-    const data = toJS(store.serialize())
+    // JSON round-trip to strip MobX observable wrappers (toJS alone can leave non-cloneable proxies)
+    const data = JSON.parse(JSON.stringify(toJS(store.serialize())))
     set(key, data)
   }, { delay: 1000 })
 }
