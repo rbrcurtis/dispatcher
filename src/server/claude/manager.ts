@@ -1,8 +1,10 @@
 import { EventEmitter } from 'events';
 import { ClaudeSession } from './protocol';
+import { SessionTailer } from './tailer';
 
 class SessionManager extends EventEmitter {
   private sessions = new Map<string, ClaudeSession>();
+  private tailers = new Map<string, SessionTailer>();
 
   create(
     cardId: number,
@@ -33,6 +35,32 @@ class SessionManager extends EventEmitter {
     if (session) {
       await session.kill();
       this.sessions.delete(key);
+    }
+  }
+
+  startTailing(cardId: number, filePath: string): SessionTailer {
+    const key = `card-${cardId}`;
+    const existing = this.tailers.get(key);
+    if (existing) return existing;
+    const tailer = new SessionTailer(filePath, cardId);
+    this.tailers.set(key, tailer);
+    tailer.start();
+    tailer.on('stale', () => {
+      this.tailers.delete(key);
+    });
+    return tailer;
+  }
+
+  getTailer(cardId: number): SessionTailer | undefined {
+    return this.tailers.get(`card-${cardId}`);
+  }
+
+  stopTailing(cardId: number): void {
+    const key = `card-${cardId}`;
+    const tailer = this.tailers.get(key);
+    if (tailer) {
+      tailer.stop();
+      this.tailers.delete(key);
     }
   }
 }

@@ -1,7 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { Options as SDKOptions, Query } from '@anthropic-ai/claude-agent-sdk';
 import { EventEmitter } from 'events';
-import { appendFileSync, mkdirSync, readFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { SessionStatus } from './types';
@@ -29,9 +29,6 @@ function getMemoryMcpEnv(cwd: string): Record<string, string> {
   }
 }
 
-const SESSIONS_DIR = join(process.cwd(), 'data', 'sessions');
-mkdirSync(SESSIONS_DIR, { recursive: true });
-
 export class ClaudeSession extends EventEmitter {
   sessionId: string | null = null;
   status: SessionStatus = 'starting';
@@ -54,10 +51,9 @@ export class ClaudeSession extends EventEmitter {
   }
 
   async start(prompt: string): Promise<void> {
-    // Persist initial prompt as a user message (like sendUserMessage does for follow-ups)
+    // Buffer initial prompt as a user message (like sendUserMessage does for follow-ups)
     const msg = { type: 'user', message: { role: 'user', content: prompt } };
     this.messages.push(msg);
-    this.persistMessage(msg);
     this.emit('message', msg);
     await this.runQuery(prompt, this.resumeSessionId);
   }
@@ -142,16 +138,13 @@ export class ClaudeSession extends EventEmitter {
     if (msg.type === 'system' && typeof msg.session_id === 'string') {
       if (!this.sessionId && !this.resumeSessionId) {
         this.sessionId = msg.session_id;
-        // Retroactively persist any buffered messages (e.g. initial user prompt)
-        for (const m of this.messages) this.persistMessage(m);
       }
       this.status = 'running';
     }
 
-    // Buffer, persist, emit
+    // Buffer and emit
     const outMsg = msg.type === 'result' ? { ...msg, ts: new Date().toISOString() } : msg;
     this.messages.push(outMsg);
-    this.persistMessage(outMsg);
     this.emit('message', outMsg);
 
     if (msg.type === 'result') {
@@ -166,7 +159,6 @@ export class ClaudeSession extends EventEmitter {
     this.queryStartIndex = this.messages.length;
     const msg = { type: 'user', message: { role: 'user', content } };
     this.messages.push(msg);
-    this.persistMessage(msg);
     this.emit('message', msg);
 
     // Interrupt running query if any, then resume with new prompt
@@ -177,17 +169,6 @@ export class ClaudeSession extends EventEmitter {
     if (!resumeId) return;
     this.status = 'starting';
     await this.runQuery(content, resumeId);
-  }
-
-  private persistMessage(msg: Record<string, unknown>): void {
-    const sid = this.sessionId ?? this.resumeSessionId;
-    if (!sid) return;
-    try {
-      appendFileSync(
-        join(SESSIONS_DIR, `${sid}.jsonl`),
-        JSON.stringify(msg) + '\n',
-      );
-    } catch { /* ignore */ }
   }
 
   async kill(): Promise<void> {
