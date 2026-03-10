@@ -46,8 +46,20 @@ export async function handleSessionLoad(
         Object.assign(lastResult, { ts: mtime })
       }
 
-      // Cast to ClaudeMessage — same shape, validated by JSONL format
-      messages = filtered as unknown as ClaudeMessage[]
+      // Wrap raw SDK messages in ClaudeMessage shape ({ type, message: {...} })
+      // User messages already have `message` field; assistant/result/system don't
+      messages = filtered.map(m => {
+        if (m.message && typeof m.message === 'object') {
+          // Already wrapped (e.g. user messages from start/sendUserMessage)
+          return m as unknown as ClaudeMessage
+        }
+        return {
+          type: m.type as ClaudeMessage['type'],
+          message: m,
+          ...(m.isSidechain !== undefined && { isSidechain: m.isSidechain as boolean }),
+          ...(m.ts !== undefined && { ts: m.ts as string }),
+        } as ClaudeMessage
+      })
     } catch (err) {
       console.error(`Failed to load session ${sessionId}:`, err)
     }
