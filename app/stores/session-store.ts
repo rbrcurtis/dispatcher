@@ -93,17 +93,27 @@ export class SessionStore {
       s.conversation.push(row)
       s.conversationIds.add(id)
 
-      // Extract context token usage from result messages
-      if (msg.type === 'result') {
+      // Extract context fill from assistant messages (skip sidechain)
+      if (msg.type === 'assistant' && !msg.isSidechain) {
         const m = msg.message
         if (typeof m.usage === 'object' && m.usage !== null) {
-          const usage = m.usage as Record<string, unknown>
-          if (typeof usage.input_tokens === 'number') {
-            s.contextTokens = usage.input_tokens
-          }
+          const u = m.usage as Record<string, unknown>
+          const input = typeof u.input_tokens === 'number' ? u.input_tokens : 0
+          const cacheCreate = typeof u.cache_creation_input_tokens === 'number' ? u.cache_creation_input_tokens : 0
+          const cacheRead = typeof u.cache_read_input_tokens === 'number' ? u.cache_read_input_tokens : 0
+          s.contextTokens = input + cacheCreate + cacheRead
         }
-        if (typeof m.context_window === 'number') {
-          s.contextWindow = m.context_window
+      }
+
+      // Extract context window size from result messages
+      if (msg.type === 'result') {
+        const m = msg.message
+        if (typeof m.modelUsage === 'object' && m.modelUsage !== null) {
+          const modelUsage = m.modelUsage as Record<string, Record<string, unknown>>
+          const first = Object.values(modelUsage)[0]
+          if (first && typeof first.contextWindow === 'number') {
+            s.contextWindow = first.contextWindow
+          }
         }
       }
     })
@@ -139,6 +149,36 @@ export class SessionStore {
       if (newRows.length > 0) {
         // Prepend history before any live messages
         s.conversation.unshift(...newRows)
+      }
+
+      // Scan backward through conversation to seed context state
+      let foundTokens = false
+      let foundWindow = false
+      for (let i = s.conversation.length - 1; i >= 0; i--) {
+        const row = s.conversation[i]
+        if (!foundTokens && row.type === 'assistant' && !row.isSidechain) {
+          const m = row.message
+          if (typeof m.usage === 'object' && m.usage !== null) {
+            const u = m.usage as Record<string, unknown>
+            const input = typeof u.input_tokens === 'number' ? u.input_tokens : 0
+            const cacheCreate = typeof u.cache_creation_input_tokens === 'number' ? u.cache_creation_input_tokens : 0
+            const cacheRead = typeof u.cache_read_input_tokens === 'number' ? u.cache_read_input_tokens : 0
+            s.contextTokens = input + cacheCreate + cacheRead
+          }
+          foundTokens = true
+        }
+        if (!foundWindow && row.type === 'result') {
+          const m = row.message
+          if (typeof m.modelUsage === 'object' && m.modelUsage !== null) {
+            const modelUsage = m.modelUsage as Record<string, Record<string, unknown>>
+            const first = Object.values(modelUsage)[0]
+            if (first && typeof first.contextWindow === 'number') {
+              s.contextWindow = first.contextWindow
+            }
+          }
+          foundWindow = true
+        }
+        if (foundTokens && foundWindow) break
       }
 
       s.historyLoaded = true
