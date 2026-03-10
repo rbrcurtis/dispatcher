@@ -26,7 +26,7 @@ export async function handleSessionLoad(
   msg: Extract<ClientMessage, { type: 'session:load' }>,
   connections: ConnectionManager,
 ): Promise<void> {
-  const { sessionId, cardId } = msg.data
+  const { requestId, data: { sessionId, cardId } } = msg
 
   let messages: ClaudeMessage[] = []
 
@@ -43,7 +43,7 @@ export async function handleSessionLoad(
       const lastResult = [...filtered].reverse().find(m => m.type === 'result' && !m.ts)
       if (lastResult) {
         const mtime = statSync(localPath).mtime.toISOString()
-        Object.assign(lastResult, { _mtime: mtime })
+        Object.assign(lastResult, { ts: mtime })
       }
 
       // Cast to ClaudeMessage — same shape, validated by JSONL format
@@ -55,12 +55,14 @@ export async function handleSessionLoad(
 
   connections.send(ws, {
     type: 'session:history',
-    data: { cardId, messages },
+    requestId,
+    cardId,
+    messages,
   })
 
   // Send mutation:ok so client's mutate() resolves
   connections.send(ws, {
     type: 'mutation:ok',
-    data: { requestId: sessionId, result: null },
+    requestId,
   })
 }

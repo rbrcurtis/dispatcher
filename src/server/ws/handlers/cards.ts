@@ -18,8 +18,8 @@ export async function handleCardCreate(
   msg: Extract<ClientMessage, { type: 'card:create' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
-  requestId: string,
 ): Promise<void> {
+  const { requestId } = msg
   try {
     const input = msg.data
     const col = input.column ?? 'backlog'
@@ -66,10 +66,10 @@ export async function handleCardCreate(
     }
 
     const card = mutator.createCard({ ...input, ...extra, column: col })
-    connections.send(ws, { type: 'mutation:ok', data: { requestId, result: card } })
+    connections.send(ws, { type: 'mutation:ok', requestId, data: card })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    connections.send(ws, { type: 'mutation:error', data: { requestId, error } })
+    connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }
 
@@ -78,15 +78,15 @@ export async function handleCardUpdate(
   msg: Extract<ClientMessage, { type: 'card:update' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
-  requestId: string,
 ): Promise<void> {
+  const { requestId } = msg
   try {
     const { id, ...data } = msg.data
     const card = mutator.updateCard(id, data)
-    connections.send(ws, { type: 'mutation:ok', data: { requestId, result: card } })
+    connections.send(ws, { type: 'mutation:ok', requestId, data: card })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    connections.send(ws, { type: 'mutation:error', data: { requestId, error } })
+    connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }
 
@@ -95,8 +95,8 @@ export async function handleCardMove(
   msg: Extract<ClientMessage, { type: 'card:move' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
-  requestId: string,
 ): Promise<void> {
+  const { requestId } = msg
   try {
     const input = msg.data
     const existing = db.select().from(cards).where(eq(cards.id, input.id)).get()
@@ -165,10 +165,10 @@ export async function handleCardMove(
 
     const position = input.position ?? 0
     const card = mutator.moveCard(input.id, input.column, position)
-    connections.send(ws, { type: 'mutation:ok', data: { requestId, result: card } })
+    connections.send(ws, { type: 'mutation:ok', requestId, data: card })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    connections.send(ws, { type: 'mutation:error', data: { requestId, error } })
+    connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }
 
@@ -177,14 +177,14 @@ export function handleCardDelete(
   msg: Extract<ClientMessage, { type: 'card:delete' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
-  requestId: string,
 ): void {
+  const { requestId } = msg
   try {
     mutator.deleteCard(msg.data.id)
-    connections.send(ws, { type: 'mutation:ok', data: { requestId, result: null } })
+    connections.send(ws, { type: 'mutation:ok', requestId })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    connections.send(ws, { type: 'mutation:error', data: { requestId, error } })
+    connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }
 
@@ -193,8 +193,8 @@ export async function handleCardGenerateTitle(
   msg: Extract<ClientMessage, { type: 'card:generateTitle' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
-  requestId: string,
 ): Promise<void> {
+  const { requestId } = msg
   try {
     const card = db.select().from(cards).where(eq(cards.id, msg.data.id)).get()
     if (!card) throw new Error(`Card ${msg.data.id} not found`)
@@ -218,9 +218,9 @@ export async function handleCardGenerateTitle(
     const title = data.response.trim()
 
     const updated = mutator.updateCard(card.id, { title })
-    connections.send(ws, { type: 'mutation:ok', data: { requestId, result: updated } })
+    connections.send(ws, { type: 'mutation:ok', requestId, data: updated })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    connections.send(ws, { type: 'mutation:error', data: { requestId, error } })
+    connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }

@@ -30,7 +30,7 @@ export class DbMutator {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any).returning().get()
 
-    this.connMgr.broadcast({ type: 'card:updated', data: { card: created as Card } }, col)
+    this.connMgr.broadcast({ type: 'card:updated', data: created as Card }, col)
     return created as Card
   }
 
@@ -41,7 +41,7 @@ export class DbMutator {
       .where(eq(cards.id, id))
       .returning().get()
     this.connMgr.broadcast(
-      { type: 'card:updated', data: { card: updated as Card } },
+      { type: 'card:updated', data: updated as Card },
       (updated as Card).column,
     )
     return updated as Card
@@ -55,7 +55,7 @@ export class DbMutator {
       .where(eq(cards.id, id))
       .returning().get()
     const cols = prevCol && prevCol !== column ? [prevCol, column] : [column]
-    this.connMgr.broadcast({ type: 'card:updated', data: { card: updated as Card } }, ...cols)
+    this.connMgr.broadcast({ type: 'card:updated', data: updated as Card }, ...cols)
     return updated as Card
   }
 
@@ -83,7 +83,7 @@ export class DbMutator {
       createdAt: new Date().toISOString(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any).returning().get()
-    this.connMgr.broadcast({ type: 'project:updated', data: { project: created as Project } })
+    this.connMgr.broadcast({ type: 'project:updated', data: created as Project })
     return created as Project
   }
 
@@ -93,7 +93,7 @@ export class DbMutator {
       .set(data as any)
       .where(eq(projects.id, id))
       .returning().get()
-    this.connMgr.broadcast({ type: 'project:updated', data: { project: updated as Project } })
+    this.connMgr.broadcast({ type: 'project:updated', data: updated as Project })
     return updated as Project
   }
 
