@@ -35,27 +35,24 @@ export class DbMutator {
   }
 
   updateCard(id: number, data: Record<string, unknown>): Card {
+    // If column is changing, fetch previous column for dual broadcast
+    let prevCol: string | undefined
+    if (data.column !== undefined) {
+      const prev = db.select({ column: cards.column }).from(cards).where(eq(cards.id, id)).get()
+      prevCol = prev?.column
+      if (prevCol) {
+        console.log(`[card:${id}] column ${prevCol} → ${data.column}`)
+      }
+    }
+
     const updated = db.update(cards)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .set({ ...data, updatedAt: new Date().toISOString() } as any)
       .where(eq(cards.id, id))
       .returning().get()
-    this.connMgr.broadcast(
-      { type: 'card:updated', data: updated as Card },
-      (updated as Card).column,
-    )
-    return updated as Card
-  }
 
-  moveCard(id: number, column: Column, position: number, extraData?: Record<string, unknown>): Card {
-    const prev = db.select().from(cards).where(eq(cards.id, id)).get()
-    const prevCol = prev?.column
-    const updated = db.update(cards)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .set({ ...extraData, column, position, updatedAt: new Date().toISOString() } as any)
-      .where(eq(cards.id, id))
-      .returning().get()
-    const cols = prevCol && prevCol !== column ? [prevCol, column] : [column]
+    const newCol = (updated as Card).column
+    const cols = prevCol && prevCol !== newCol ? [prevCol, newCol] : [newCol]
     this.connMgr.broadcast({ type: 'card:updated', data: updated as Card }, ...cols)
     return updated as Card
   }
