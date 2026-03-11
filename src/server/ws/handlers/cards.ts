@@ -12,6 +12,7 @@ import {
   slugify,
   worktreeExists,
 } from '../../worktree'
+import { beginSession } from '../../claude/begin-session'
 
 export async function handleCardCreate(
   ws: WebSocket,
@@ -24,6 +25,12 @@ export async function handleCardCreate(
     const input = msg.data
     const col = input.column ?? 'backlog'
 
+    // Validate: running requires non-empty title and description
+    if (col === 'running') {
+      if (!input.title?.trim()) throw new Error('Title is required for running')
+      if (!input.description?.trim()) throw new Error('Description is required for running')
+    }
+
     const extra: Record<string, unknown> = {}
 
     // Fetch project for defaults and worktree setup
@@ -34,8 +41,8 @@ export async function handleCardCreate(
           extra.model = input.model ?? proj.defaultModel
           extra.thinkingLevel = input.thinkingLevel ?? proj.defaultThinkingLevel
 
-          // Set up working directory when creating directly into in_progress
-          if (col === 'in_progress') {
+          // Set up working directory when creating directly into running
+          if (col === 'running') {
             try {
               if (!input.useWorktree) {
                 extra.worktreePath = proj.path
@@ -67,6 +74,13 @@ export async function handleCardCreate(
 
     const card = mutator.createCard({ ...input, ...extra, column: col })
     connections.send(ws, { type: 'mutation:ok', requestId, data: card })
+
+    // Auto-start session when creating directly into running
+    if (col === 'running') {
+      beginSession(card.id, undefined, ws, connections, mutator).catch((err) => {
+        console.error(`[session:${card.id}] auto-start on create failed:`, err)
+      })
+    }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     connections.send(ws, { type: 'mutation:error', requestId, error })
@@ -82,32 +96,22 @@ export async function handleCardUpdate(
   const { requestId } = msg
   try {
     const { id, ...data } = msg.data
-    const card = mutator.updateCard(id, data)
-    connections.send(ws, { type: 'mutation:ok', requestId, data: card })
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err)
-    connections.send(ws, { type: 'mutation:error', requestId, error })
-  }
-}
+    const existing = db.select().from(cards).where(eq(cards.id, id)).get()
+    if (!existing) throw new Error(`Card ${id} not found`)
 
-export async function handleCardMove(
-  ws: WebSocket,
-  msg: Extract<ClientMessage, { type: 'card:move' }>,
-  connections: ConnectionManager,
-  mutator: DbMutator,
-): Promise<void> {
-  const { requestId } = msg
-  try {
-    const input = msg.data
-    const existing = db.select().from(cards).where(eq(cards.id, input.id)).get()
-    if (!existing) throw new Error(`Card ${input.id} not found`)
+    const movingToRunning = data.column === 'running' && existing.column !== 'running'
 
-    const columnChanged = existing.column !== input.column
+    // Validate: running requires non-empty title and description
+    if (data.column === 'running') {
+      const title = data.title ?? existing.title
+      const desc = data.description !== undefined ? data.description : existing.description
+      if (!title?.trim()) throw new Error('Title is required for running')
+      if (!desc?.trim()) throw new Error('Description is required for running')
+    }
 
-    const updates: Record<string, unknown> = {}
-
-    // Worktree / working directory setup when moving to in_progress
-    if (columnChanged && input.column === 'in_progress' && existing.projectId) {
+    // Worktree setup when moving to running
+    const updates: Record<string, unknown> = { ...data }
+    if (movingToRunning && existing.projectId) {
       try {
         const proj = db.select().from(projects).where(eq(projects.id, existing.projectId)).get()
         if (proj) {
@@ -131,14 +135,14 @@ export async function handleCardMove(
           }
         }
       } catch (err) {
-        console.error(`Failed to set up working directory for card ${existing.id}:`, err)
+        console.error(`[card:${id}] failed to set up worktree:`, err)
       }
     }
 
-    // Worktree removal when moving to archive (preserve path/branch/session fields)
+    // Worktree removal when moving to archive
     if (
-      columnChanged &&
-      input.column === 'archive' &&
+      data.column === 'archive' &&
+      existing.column !== 'archive' &&
       existing.useWorktree &&
       existing.worktreePath &&
       existing.projectId
@@ -149,20 +153,27 @@ export async function handleCardMove(
           try {
             removeWorktree(proj.path, existing.worktreePath)
           } catch (err) {
-            console.error(`Failed to remove worktree for card ${existing.id}:`, err)
+            console.error(`[card:${id}] failed to remove worktree:`, err)
           }
         }
       } catch (err) {
-        console.error(`Failed to clean up worktree for card ${existing.id}:`, err)
+        console.error(`[card:${id}] failed to clean up worktree:`, err)
       }
-      // Do NOT null worktreePath, worktreeBranch, or sessionId — needed for resumption
     }
 
-    // Merge worktree field updates into the move to avoid an intermediate broadcast
-    // (a separate updateCard would broadcast the old column, causing a visible flash)
-    const position = input.position ?? 0
-    const card = mutator.moveCard(input.id, input.column, position, Object.keys(updates).length > 0 ? updates : undefined)
+    const card = mutator.updateCard(id, updates)
     connections.send(ws, { type: 'mutation:ok', requestId, data: card })
+
+    // Auto-start session when moving to running
+    if (movingToRunning) {
+      beginSession(card.id, undefined, ws, connections, mutator).catch((err) => {
+        console.error(`[session:${id}] auto-start failed:`, err)
+        connections.send(ws, {
+          type: 'claude:status',
+          data: { cardId: id, active: false, status: 'errored', sessionId: null, promptsSent: 0, turnsCompleted: 0 },
+        })
+      })
+    }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     connections.send(ws, { type: 'mutation:error', requestId, error })

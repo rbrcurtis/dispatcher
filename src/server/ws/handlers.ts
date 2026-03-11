@@ -8,7 +8,6 @@ import { like, or, asc, count } from 'drizzle-orm'
 import {
   handleCardCreate,
   handleCardUpdate,
-  handleCardMove,
   handleCardDelete,
   handleCardGenerateTitle,
   handleCardSuggestTitle,
@@ -21,7 +20,6 @@ import {
 } from './handlers/projects'
 import { handleSessionLoad } from './handlers/sessions'
 import {
-  handleClaudeStart,
   handleClaudeSend,
   handleClaudeStop,
   handleClaudeStatus,
@@ -109,10 +107,6 @@ export function handleMessage(
       void handleCardUpdate(ws, msg, connections, mutator)
       break
 
-    case 'card:move':
-      void handleCardMove(ws, msg, connections, mutator)
-      break
-
     case 'card:delete':
       handleCardDelete(ws, msg, connections, mutator)
       break
@@ -143,10 +137,6 @@ export function handleMessage(
 
     case 'session:load':
       void handleSessionLoad(ws, msg, connections)
-      break
-
-    case 'claude:start':
-      void handleClaudeStart(ws, msg, connections, mutator)
       break
 
     case 'claude:send':
