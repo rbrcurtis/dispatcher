@@ -5,14 +5,14 @@ import { Button } from '~/components/ui/button';
 import { Badge } from '~/components/ui/badge';
 import { Card } from './Card';
 
-export type ColumnId = 'backlog' | 'ready' | 'in_progress' | 'review' | 'done' | 'archive';
+export type ColumnId = 'backlog' | 'ready' | 'running' | 'review' | 'done' | 'archive';
 
-export const ALL_COLUMNS: ColumnId[] = ['backlog', 'ready', 'in_progress', 'review', 'done', 'archive'];
+export const ALL_COLUMNS: ColumnId[] = ['backlog', 'ready', 'running', 'review', 'done', 'archive'];
 
 const displayNames: Record<ColumnId, string> = {
   backlog: 'Backlog',
   ready: 'Ready',
-  in_progress: 'In Progress',
+  running: 'Running',
   review: 'Review',
   done: 'Done',
   archive: 'Archive',
