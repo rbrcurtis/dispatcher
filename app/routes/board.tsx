@@ -42,7 +42,7 @@ const BoardLayout = observer(function BoardLayout() {
   const projectStore = useProjectStore();
 
   useEffect(() => {
-    store.subscribe(['backlog', 'ready', 'in_progress', 'review', 'done']);
+    store.subscribe(['backlog', 'ready', 'running', 'review', 'done']);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedCardId = searchParams.get('card') ? Number(searchParams.get('card')) : null;

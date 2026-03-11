@@ -19,11 +19,11 @@ type Props = {
   onClose: () => void;
 };
 
-const STATUSES = ['backlog', 'ready', 'in_progress', 'review', 'done', 'archive'] as const;
+const STATUSES = ['backlog', 'ready', 'running', 'review', 'done', 'archive'] as const;
 const statusLabels: Record<string, string> = {
   backlog: 'Backlog',
   ready: 'Ready',
-  in_progress: 'In Progress',
+  running: 'Running',
   review: 'Review',
   done: 'Done',
   archive: 'Archive',
@@ -70,7 +70,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
       thinkingLevel: card.thinkingLevel,
     });
     // Auto-collapse when session exists
-    setFormOpen(!card.sessionId && card.column !== 'in_progress');
+    setFormOpen(!card.sessionId && card.column !== 'running');
   }, [card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-sync fields on update (but don't reset formOpen) — keyed on updatedAt to avoid resetting collapse state
@@ -113,7 +113,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
 
   async function handleStatusChange(newColumn: string) {
     if (!card || newColumn === card.column) return;
-    await cardStore.moveCard({ id: card.id, column: newColumn as Column, position: 0 });
+    await cardStore.updateCard({ id: card.id, column: newColumn as Column });
     if (newColumn === 'done' || newColumn === 'archive') {
       onClose();
     }
@@ -133,11 +133,8 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
   const selectedProject = draft.projectId != null ? projectStore.getProject(draft.projectId) : undefined;
   const cardProject = card.projectId != null ? projectStore.getProject(card.projectId) : undefined;
   const col = card.column;
-  const hasSession = !!card.sessionId || col === 'in_progress';
+  const hasSession = !!card.sessionId || col === 'running';
   const showSession = hasSession;
-  const autoStartPrompt = col === 'in_progress' && !card.sessionId && card.projectId && card.description?.trim()
-    ? card.description.trim()
-    : undefined;
   const projectLocked = !!card.projectId;
 
   async function saveField(field: 'title' | 'description', val: string) {
@@ -149,8 +146,8 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
       {/* Header bar */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
         <Select value={col} onValueChange={handleStatusChange}>
-          <div className={col === 'in_progress' ? 'cursor-not-allowed' : ''}>
-            <SelectTrigger className={cn('w-auto border-none shadow-none px-0 h-auto gap-1.5 shrink-0', col === 'in_progress' && 'pointer-events-none')}>
+          <div className={col === 'running' ? 'cursor-not-allowed' : ''}>
+            <SelectTrigger className={cn('w-auto border-none shadow-none px-0 h-auto gap-1.5 shrink-0', col === 'running' && 'pointer-events-none')}>
               <Badge variant="outline" className="uppercase text-xs tracking-wide">
                 <SelectValue />
               </Badge>
@@ -373,7 +370,6 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
         <SessionView
           cardId={card.id}
           sessionId={card.sessionId}
-          autoStartPrompt={autoStartPrompt}
           accentColor={cardProject?.color}
           model={card.model ?? 'sonnet'}
           thinkingLevel={card.thinkingLevel ?? 'high'}
@@ -425,7 +421,7 @@ export const NewCardDetail = observer(function NewCardDetail({ column, onCreated
         model: draft.model,
         thinkingLevel: draft.thinkingLevel,
       });
-      if (selectedColumn === 'in_progress' && draft.projectId && draft.description.trim()) {
+      if (selectedColumn === 'running' && draft.projectId && draft.description.trim()) {
         onCreated(card.id);
       } else {
         onClose();

@@ -21,7 +21,7 @@ import {
   type UniqueIdentifier,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
-import { useCardStore, useProjectStore, useSessionStore } from '~/stores/context';
+import { useCardStore, useProjectStore } from '~/stores/context';
 import { StatusRow, ALL_COLUMNS, type ColumnId } from '~/components/StatusRow';
 import { CardOverlay } from '~/components/Card';
 import type { Card } from '../../src/shared/ws-protocol';
@@ -33,7 +33,7 @@ type BoardContext = {
   startNewCard: (column: string) => void;
 };
 
-const ACTIVE_COLUMNS: ColumnId[] = ['backlog', 'ready', 'in_progress', 'review', 'done'];
+const ACTIVE_COLUMNS: ColumnId[] = ['backlog', 'ready', 'running', 'review', 'done'];
 
 interface CardItem {
   id: number;
@@ -81,7 +81,6 @@ const ActiveBoard = observer(function ActiveBoard() {
   const { search, selectCard, startNewCard } = useOutletContext<BoardContext>();
   const cardStore = useCardStore();
   const projectStore = useProjectStore();
-  const sessionStore = useSessionStore();
 
   // Build color map from projects (no useMemo — observer tracks MobX reads)
   const colorMap: Record<number, string> = {};
@@ -93,7 +92,7 @@ const ActiveBoard = observer(function ActiveBoard() {
   const storeColumns: ColumnCards = {
     backlog: [],
     ready: [],
-    in_progress: [],
+    running: [],
     review: [],
     done: [],
     archive: [],
@@ -176,7 +175,7 @@ const ActiveBoard = observer(function ActiveBoard() {
     const activeCol = snapshotRef.current
       ? findColumnInData(snapshotRef.current, active.id)
       : findColumnInData(columns, active.id);
-    if (activeCol === 'in_progress') return;
+    if (activeCol === 'running') return;
 
     const overCol = findColumnInData(columns, over.id);
     const currentCol = findColumnInData(columns, active.id);
@@ -224,8 +223,8 @@ const ActiveBoard = observer(function ActiveBoard() {
       return;
     }
 
-    // Snap back in_progress cards — session is running, moves not allowed
-    if (originalCol === 'in_progress') {
+    // Snap back running cards — session is running, moves not allowed
+    if (originalCol === 'running') {
       setDragOverride(null);
       setActiveId(null);
       snapshotRef.current = null;
@@ -246,7 +245,7 @@ const ActiveBoard = observer(function ActiveBoard() {
         const finalIdx = reordered.findIndex((c) => c.id === active.id);
         const pos = calcPosition(others, finalIdx);
 
-        cardStore.moveCard({ id: active.id as number, column: currentCol, position: pos })
+        cardStore.updateCard({ id: active.id as number, column: currentCol })
           .finally(() => setDragOverride(null));
       } else {
         setDragOverride(null);
@@ -257,18 +256,8 @@ const ActiveBoard = observer(function ActiveBoard() {
       const insertIdx = columns[currentCol].findIndex((c) => c.id === active.id);
       const pos = calcPosition(destCards, insertIdx === -1 ? destCards.length : insertIdx);
 
-      const movePromise = cardStore.moveCard({ id: active.id as number, column: currentCol, position: pos });
-
-      // Auto-start Claude when dragging to in_progress
-      if (currentCol === 'in_progress') {
-        const card = columns[currentCol].find((c) => c.id === active.id);
-        if (card && card.projectId && card.description?.trim() && !card.sessionId) {
-          const { cardId, prompt } = { cardId: card.id, prompt: card.description.trim() };
-          movePromise.then(() => sessionStore.startSession(cardId, prompt)).catch(() => {});
-        }
-      }
-
-      movePromise.finally(() => setDragOverride(null));
+      cardStore.updateCard({ id: active.id as number, column: currentCol })
+        .finally(() => setDragOverride(null));
     }
 
     setActiveId(null);
