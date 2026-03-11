@@ -73,14 +73,14 @@ describe('ConnectionManager', () => {
   it('updates subscribed columns via subscribe()', () => {
     const ws = mockWs()
     mgr.add(ws)
-    mgr.subscribe(ws, ['ready', 'in_progress'])
-    expect(mgr.getSubscribedColumns(ws)).toEqual(new Set(['ready', 'in_progress']))
+    mgr.subscribe(ws, ['ready', 'running'])
+    expect(mgr.getSubscribedColumns(ws)).toEqual(new Set(['ready', 'running']))
   })
 
   it('replaces columns on re-subscribe', () => {
     const ws = mockWs()
     mgr.add(ws)
-    mgr.subscribe(ws, ['ready', 'in_progress'])
+    mgr.subscribe(ws, ['ready', 'running'])
     mgr.subscribe(ws, ['done'])
     expect(mgr.getSubscribedColumns(ws)).toEqual(new Set(['done']))
   })
@@ -157,11 +157,11 @@ describe('ConnectionManager', () => {
     mgr.add(wsNew)
     mgr.add(wsOther)
     mgr.subscribe(wsOld, ['ready'])        // subscribed to old column
-    mgr.subscribe(wsNew, ['in_progress'])  // subscribed to new column
+    mgr.subscribe(wsNew, ['running'])  // subscribed to new column
     mgr.subscribe(wsOther, ['done'])       // irrelevant column
 
     // broadcast with both old and new columns
-    mgr.broadcast(cardUpdatedMsg, 'ready', 'in_progress')
+    mgr.broadcast(cardUpdatedMsg, 'ready', 'running')
 
     expect(wsOld.send).toHaveBeenCalledOnce()
     expect(wsNew.send).toHaveBeenCalledOnce()
@@ -171,9 +171,9 @@ describe('ConnectionManager', () => {
   it('broadcasts to connection subscribed to both old and new column only once', () => {
     const ws = mockWs()
     mgr.add(ws)
-    mgr.subscribe(ws, ['ready', 'in_progress'])
+    mgr.subscribe(ws, ['ready', 'running'])
 
-    mgr.broadcast(cardUpdatedMsg, 'ready', 'in_progress')
+    mgr.broadcast(cardUpdatedMsg, 'ready', 'running')
 
     // should only send once — first matching column wins via some()
     expect(ws.send).toHaveBeenCalledOnce()

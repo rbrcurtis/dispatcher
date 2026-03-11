@@ -79,7 +79,7 @@ describe('clientMessage', () => {
     const msg = {
       type: 'card:move',
       requestId: 'r1',
-      data: { id: 5, column: 'in_progress', position: 2.0 },
+      data: { id: 5, column: 'running', position: 2.0 },
     }
     const result = clientMessage.safeParse(msg)
     expect(result.success).toBe(true)
