@@ -24,7 +24,11 @@ The existing directory browser component gains three capabilities, shared by bot
 
 **Paste support:** Pasting a full path into the input navigates directly to that directory. If the path exists and is a directory, browse into it. If it doesn't exist, allow selection anyway (for cases where the folder will be created).
 
-**New Folder button:** A button in the directory listing. Clicking shows an inline text input prompting for the folder name, with confirm/cancel. On confirm, creates the directory via a server call and refreshes the listing. The new folder is created inside whatever directory is currently being browsed.
+**New Folder button:** A button in the directory listing. Clicking shows an inline text input prompting for the folder name, with confirm/cancel. On confirm, creates the directory via `projects.mkdir` tRPC procedure (input: `{ path: string }`, creates recursively, returns `{ success: boolean }`) and refreshes the listing. The new folder is created inside whatever directory is currently being browsed.
+
+### Directory Browser Component Changes
+
+The `DirectoryBrowser` `onSelect` callback currently passes `(path: string, isGitRepo: boolean)`. To support Kiro HOME (which has no git concept), make `isGitRepo` optional: `onSelect: (path: string, isGitRepo?: boolean)`. The project path picker continues to pass it; the Kiro HOME picker omits it.
 
 ### ProjectForm Agent Fields
 
@@ -35,6 +39,8 @@ Two new fields in ProjectForm, placed after the project path section:
 2. **Kiro HOME** — Directory picker (same enhanced component as project path). Only visible when agent type is "Kiro". Stored as `agentProfile` on the project. Label: "Kiro HOME" with hint text: "Auth & config directory for this Kiro instance".
 
 **Validation:** When agent type is Kiro, `agentProfile` is required. When Claude Code, `agentProfile` is ignored and cleared.
+
+**Form state changes:** Add `agentType` (default `'claude'`) and `agentProfile` (default `''`) to ProjectForm local state. Update `isValid` to: `name && path && (!isGitRepo || defaultBranch) && (agentType !== 'kiro' || agentProfile)`. The `Project` interface used for edit mode already includes these fields from the DB schema. When switching from Kiro back to Claude Code, clear `agentProfile`.
 
 **Existing support:** The DB schema (`agentType`, `agentProfile` columns), project store, WS protocol schemas, and `begin-session.ts` already read and pass these fields through. Only the form UI is new.
 
@@ -48,23 +54,27 @@ Two new fields in ProjectForm, placed after the project path section:
 
 Spawns `kiro-cli acp` over stdio with `HOME` set to the `agentProfile` path and `cwd` set to the project path. Communicates via JSON-RPC 2.0 on stdin/stdout.
 
+**Constructor:** `constructor(cwd: string, agentProfile: string, resumeSessionId?: string)`
+
 **Lifecycle:**
 
-- `start()` — Spawn child process with `{ env: { ...process.env, HOME: agentProfile }, cwd }`. Send `initialize` JSON-RPC request. Then send `session/new` (or `session/load` if resuming via `resumeSessionId`). Mark ready once initialize response is received.
-- `sendMessage(text)` — Send `session/prompt` JSON-RPC request with the prompt text.
-- `kill()` — Send `session/cancel`, then kill the child process.
-- `waitForReady()` — Wait for initialize handshake to complete (30s timeout, same pattern as ClaudeSession).
+- `start(prompt)` — Spawn child process with `{ env: { ...process.env, HOME: agentProfile }, cwd }`. Send `initialize` JSON-RPC request. On response, extract `sessionId` from the initialize result (likely `result.sessionId` or from the subsequent `session/new` response — exact field TBD during implementation by inspecting ACP output). Then send `session/new` (or `session/load` if `resumeSessionId` is set). Finally, send `session/prompt` with the initial `prompt` string. This matches `ClaudeSession.start(prompt)` which also sends the first prompt before returning.
+- `sendMessage(text)` — Send `session/prompt` JSON-RPC request with additional prompts (after the first).
+- `kill()` — Guard against already-exited process or pre-init state. If the process is running, send `session/cancel` (ignoring EPIPE), then kill the child process. If already exited, no-op.
+- `waitForReady()` — Wait for `sessionId` to be captured (30s timeout, same pattern as ClaudeSession).
 
 ### Message Normalization
 
 `src/server/agents/kiro/messages.ts` — `normalizeKiroMessage()` maps ACP notification events to `AgentMessage`:
 
-| ACP Event | AgentMessage type |
-|---|---|
-| `AgentMessageChunk` | `text` |
-| `ToolCall` | `tool_call` |
-| `ToolCallUpdate` | `tool_progress` |
-| `TurnEnd` | `turn_end` |
+| ACP Event | AgentMessage type | Key fields to extract |
+|---|---|---|
+| `AgentMessageChunk` | `text` | `chunk.content` → message text |
+| `ToolCall` | `tool_call` | `toolName`, `toolCallId`, `input` (params) |
+| `ToolCallUpdate` | `tool_progress` | `toolCallId`, `content` (partial output) |
+| `TurnEnd` | `turn_end` | `usage` if present (for context tracking) |
+
+**Note:** Exact ACP event field names are based on documented ACP protocol. During implementation, inspect actual `kiro-cli acp` JSON-RPC output to confirm field names and adjust mappings. The normalization function should log unrecognized event types at debug level for discovery.
 
 Follows the same pattern as `src/server/agents/claude/messages.ts`.
 
@@ -92,7 +102,7 @@ Implemented in `src/server/agents/kiro/tailer.ts` as `KiroSessionTailer` (or by 
 
 ### Live Tailing
 
-During an active session, tail the JSONL file for new events and emit them through the existing event pipeline. This supplements the stdio stream and ensures no events are missed if the stdio normalization misses edge cases.
+During an active session, use the JSONL file tail as the **sole event source** (not stdio). The stdio stream handles only the JSON-RPC request/response transport for `initialize`, `session/new`, `session/prompt`, and `session/cancel`. All streaming content (agent messages, tool calls, etc.) is read from the JSONL file via tailing. This avoids dual-stream deduplication problems. If the JSONL file approach proves unreliable during implementation, fall back to stdio-only with no file tailing — never both simultaneously without dedup.
 
 ### Path Resolution
 
@@ -100,7 +110,7 @@ The tailer resolves session files at `{agentProfile}/.kiro/sessions/cli/{session
 
 ### Abstraction
 
-The existing `SessionTailer` class may need to become agent-aware (accepting a path resolver function) or be subclassed per agent type. The exact approach depends on how similar the file formats are — Claude uses a single JSONL file while Kiro may use a directory with multiple files.
+Create `KiroSessionTailer` as a subclass of `SessionTailer` with an overridden path resolver. The base `SessionTailer` takes a file path; the Kiro subclass resolves `{agentProfile}/.kiro/sessions/cli/{sessionId}/events.jsonl` (exact filename TBD during implementation). Message normalization uses `normalizeKiroMessage()` instead of the Claude normalizer. The base class handles file watching and line buffering; the subclass handles path resolution and message parsing.
 
 ---
 
@@ -119,6 +129,11 @@ The existing `SessionTailer` class may need to become agent-aware (accepting a p
 ### Stage 3
 - `src/server/agents/kiro/tailer.ts` (new — Kiro session file reading/tailing)
 - Potentially refactor `SessionTailer` for agent-aware path resolution
+
+## Notes
+
+- `KiroSession` leaves `model` and `thinkingLevel` fields unset — Kiro doesn't expose these via ACP currently.
+- `kiro-cli` is expected to be on PATH. No minimum version check is enforced; if ACP protocol changes, the normalization layer will need updating.
 
 ## Out of Scope
 
