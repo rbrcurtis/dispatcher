@@ -20,10 +20,10 @@ import {
 } from './handlers/projects'
 import { handleSessionLoad } from './handlers/sessions'
 import {
-  handleClaudeSend,
-  handleClaudeStop,
-  handleClaudeStatus,
-} from './handlers/claude'
+  handleAgentSend,
+  handleAgentStop,
+  handleAgentStatus,
+} from './handlers/agents'
 
 const PAGE_SIZE = 20
 
@@ -139,16 +139,16 @@ export function handleMessage(
       void handleSessionLoad(ws, msg, connections)
       break
 
-    case 'claude:send':
-      void handleClaudeSend(ws, msg, connections, mutator)
+    case 'agent:send':
+      void handleAgentSend(ws, msg, connections, mutator)
       break
 
-    case 'claude:stop':
-      void handleClaudeStop(ws, msg, connections, mutator)
+    case 'agent:stop':
+      void handleAgentStop(ws, msg, connections, mutator)
       break
 
-    case 'claude:status':
-      void handleClaudeStatus(ws, msg, connections, mutator)
+    case 'agent:status':
+      void handleAgentStatus(ws, msg, connections, mutator)
       break
 
     default: {

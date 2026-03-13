@@ -6,20 +6,20 @@ import type { DbMutator } from '../../db/mutator'
 import { db } from '../../db/index'
 import { cards } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { sessionManager } from '../../claude/manager'
-import { beginSession } from '../../claude/begin-session'
-import type { SessionStatus } from '../../claude/types'
+import { sessionManager } from '../../agents/manager'
+import { beginSession } from '../../agents/begin-session'
+import type { SessionStatus } from '../../agents/types'
 
-// ── handleClaudeSend ──────────────────────────────────────────────────────────
+// ── handleAgentSend ───────────────────────────────────────────────────────────
 
-export async function handleClaudeSend(
+export async function handleAgentSend(
   ws: WebSocket,
-  msg: Extract<ClientMessage, { type: 'claude:send' }>,
+  msg: Extract<ClientMessage, { type: 'agent:send' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
 ): Promise<void> {
   const { requestId, data: { cardId, message, files } } = msg
-  console.log(`[session:${cardId}] claude:send received, message length=${message.length}, files=${files?.length ?? 0}`)
+  console.log(`[session:${cardId}] agent:send received, message length=${message.length}, files=${files?.length ?? 0}`)
 
   try {
     // Move card to running (validates title/description, sets up worktree)
@@ -53,21 +53,21 @@ export async function handleClaudeSend(
     connections.send(ws, { type: 'mutation:ok', requestId })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    console.error(`[session:${cardId}] claude:send error:`, error)
+    console.error(`[session:${cardId}] agent:send error:`, error)
     connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }
 
-// ── handleClaudeStop ──────────────────────────────────────────────────────────
+// ── handleAgentStop ───────────────────────────────────────────────────────────
 
-export async function handleClaudeStop(
+export async function handleAgentStop(
   ws: WebSocket,
-  msg: Extract<ClientMessage, { type: 'claude:stop' }>,
+  msg: Extract<ClientMessage, { type: 'agent:stop' }>,
   connections: ConnectionManager,
   mutator: DbMutator,
 ): Promise<void> {
   const { requestId, data: { cardId } } = msg
-  console.log(`[session:${cardId}] claude:stop received`)
+  console.log(`[session:${cardId}] agent:stop received`)
 
   try {
     await sessionManager.kill(cardId)
@@ -75,16 +75,16 @@ export async function handleClaudeStop(
     connections.send(ws, { type: 'mutation:ok', requestId })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
-    console.error(`[session:${cardId}] claude:stop error:`, error)
+    console.error(`[session:${cardId}] agent:stop error:`, error)
     connections.send(ws, { type: 'mutation:error', requestId, error })
   }
 }
 
-// ── handleClaudeStatus ────────────────────────────────────────────────────────
+// ── handleAgentStatus ─────────────────────────────────────────────────────────
 
-export async function handleClaudeStatus(
+export async function handleAgentStatus(
   ws: WebSocket,
-  msg: Extract<ClientMessage, { type: 'claude:status' }>,
+  msg: Extract<ClientMessage, { type: 'agent:status' }>,
   connections: ConnectionManager,
   _mutator: DbMutator,
 ): Promise<void> {
@@ -129,7 +129,7 @@ export async function handleClaudeStatus(
       }
     }
 
-    connections.send(ws, { type: 'claude:status', data: statusData })
+    connections.send(ws, { type: 'agent:status', data: statusData })
     connections.send(ws, { type: 'mutation:ok', requestId })
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)

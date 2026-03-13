@@ -12,7 +12,7 @@ import {
   slugify,
   worktreeExists,
 } from '../../worktree'
-import { beginSession } from '../../claude/begin-session'
+import { beginSession } from '../../agents/begin-session'
 
 export async function handleCardCreate(
   ws: WebSocket,
@@ -169,7 +169,7 @@ export async function handleCardUpdate(
       beginSession(card.id, undefined, ws, connections, mutator).catch((err) => {
         console.error(`[session:${id}] auto-start failed:`, err)
         connections.send(ws, {
-          type: 'claude:status',
+          type: 'agent:status',
           data: { cardId: id, active: false, status: 'errored', sessionId: null, promptsSent: 0, turnsCompleted: 0 },
         })
       })

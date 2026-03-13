@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws'
-import type { ClientMessage, ClaudeMessage } from '../../../shared/ws-protocol'
+import type { ClientMessage, AgentMessage } from '../../../shared/ws-protocol'
 import type { ConnectionManager } from '../connections'
 import { readFile } from 'fs/promises'
 import { existsSync, statSync } from 'fs'
@@ -7,8 +7,9 @@ import { join } from 'path'
 import { db } from '../../db/index'
 import { cards } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { getSDKSessionPath } from '../../claude/session-path'
-import { sessionManager } from '../../claude/manager'
+import { getSDKSessionPath } from '../../agents/claude/session-path'
+import { sessionManager } from '../../agents/manager'
+import { normalizeClaudeMessage, normalizeToolResult } from '../../agents/claude/messages'
 
 const LEGACY_SESSIONS_DIR = join(process.cwd(), 'data', 'sessions')
 const ACTIVE_THRESHOLD = 5 * 60_000 // 5 minutes
@@ -106,7 +107,7 @@ export async function handleSessionLoad(
   const card = db.select({ worktreePath: cards.worktreePath }).from(cards).where(eq(cards.id, cardId)).get()
   const filePath = findSessionFile(sessionId, card?.worktreePath ?? null)
 
-  let messages: ClaudeMessage[] = []
+  let messages: AgentMessage[] = []
 
   if (filePath) {
     try {
@@ -124,18 +125,22 @@ export async function handleSessionLoad(
         Object.assign(lastResult, { ts: mtime })
       }
 
-      // Wrap raw SDK messages in ClaudeMessage shape ({ type, message: {...} })
-      messages = filtered.map(m => {
-        if (m.message && typeof m.message === 'object') {
-          return m as unknown as ClaudeMessage
+      // Normalize raw SDK messages into AgentMessage shape
+      const normalized: AgentMessage[] = []
+      for (const m of filtered) {
+        normalized.push(...normalizeClaudeMessage(m))
+        // Extract tool_result blocks from user messages
+        if (m.type === 'user') {
+          const inner = m.message as { content?: unknown } | undefined
+          if (Array.isArray(inner?.content)) {
+            for (const block of inner!.content as Array<Record<string, unknown>>) {
+              const tr = normalizeToolResult(block as { type: string; tool_use_id?: string; content?: unknown }, Date.now())
+              if (tr) normalized.push(tr)
+            }
+          }
         }
-        return {
-          type: m.type as ClaudeMessage['type'],
-          message: m,
-          ...(m.isSidechain !== undefined && { isSidechain: m.isSidechain as boolean }),
-          ...(m.ts !== undefined && { ts: m.ts as string }),
-        } as ClaudeMessage
-      })
+      }
+      messages = normalized
     } catch (err) {
       console.error(`Failed to load session ${sessionId}:`, err)
     }
@@ -153,25 +158,15 @@ export async function handleSessionLoad(
             const type = rawMsg.type as string
             if (type !== 'assistant' && type !== 'user' && type !== 'result' && type !== 'system') return
 
-            const wrapped: ClaudeMessage = rawMsg.message && typeof rawMsg.message === 'object'
-              ? rawMsg as unknown as ClaudeMessage
-              : {
-                  type: type as ClaudeMessage['type'],
-                  message: rawMsg,
-                  ...(rawMsg.isSidechain !== undefined && { isSidechain: rawMsg.isSidechain as boolean }),
-                  ...(rawMsg.ts !== undefined && { ts: rawMsg.ts as string }),
-                } as ClaudeMessage
-
-            connections.send(ws, {
-              type: 'claude:message',
-              cardId,
-              data: wrapped,
-            })
+            const agentMsgs = normalizeClaudeMessage(rawMsg)
+            for (const am of agentMsgs) {
+              connections.send(ws, { type: 'agent:message', cardId, data: am })
+            }
           })
 
           // Send active status so client shows live state
           connections.send(ws, {
-            type: 'claude:status',
+            type: 'agent:status',
             data: {
               cardId,
               active: true,
@@ -185,7 +180,7 @@ export async function handleSessionLoad(
           // When tailer goes stale, notify client session is done
           tailer.on('stale', () => {
             connections.send(ws, {
-              type: 'claude:status',
+              type: 'agent:status',
               data: {
                 cardId,
                 active: false,
