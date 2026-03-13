@@ -47,7 +47,8 @@ export function subscribeToSession(
 
   const exitHandler = () => {
     console.log(`[session:${cardId}] exit, status=${session.status}`)
-    if (session.status === 'completed' || session.status === 'errored') {
+    // Only move to review on error or stop — session.idle keeps session alive
+    if (session.status === 'errored' || session.status === 'stopped') {
       try {
         mutator.updateCard(cardId, {
           column: 'review',

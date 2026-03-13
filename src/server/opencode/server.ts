@@ -1,6 +1,6 @@
 import { spawn, execFileSync, type ChildProcess } from 'child_process'
 import { createOpencodeClient } from '@opencode-ai/sdk'
-import { resolve } from 'path'
+import { resolve as resolvePath } from 'path'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -27,7 +27,7 @@ function findOpencodeBinary(): string {
   throw new Error('opencode binary not found. Install it: curl -fsSL https://opencode.ai/install | bash')
 }
 const HEALTH_POLL_MS = 500
-const HEALTH_TIMEOUT_MS = 30_000
+const HEALTH_TIMEOUT_MS = 60_000
 
 export class OpenCodeServer {
   private proc: ChildProcess | null = null
@@ -54,7 +54,7 @@ export class OpenCodeServer {
     return new Promise((resolve, reject) => {
       this.proc = spawn(this.binaryPath, ['serve', '--port', String(OPENCODE_PORT)], {
         env: { ...process.env },
-        cwd: resolve('.'),
+        cwd: resolvePath('.'),
         stdio: ['ignore', 'pipe', 'pipe'],
       })
 
