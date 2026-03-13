@@ -14,6 +14,7 @@ import {
 } from '../worktree'
 import { getKiroSessionDir, getKiroSessionLogPath } from './kiro/session-path'
 import { KiroSessionTailer } from './kiro/tailer'
+import { KiroSession } from './kiro/session'
 
 const DISPLAY_TYPES = new Set([
   'user', 'text', 'tool_call', 'tool_result', 'tool_progress', 'thinking', 'system', 'turn_end', 'error',
@@ -199,7 +200,7 @@ export async function beginSession(
     // Start Kiro log tailer as the sole event source (per spec: no dual-streaming)
     if (agentType === 'kiro' && session.sessionId && agentProfile) {
       // Disable stdio message emission — tailer is the sole source
-      const kiroSession = session as import('./kiro/session').KiroSession
+      const kiroSession = session as KiroSession
       kiroSession.emitFromStdio = false
 
       // Use dynamic log path resolver (scans for .jsonl file).
