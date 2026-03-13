@@ -61,6 +61,7 @@ export default function DirectoryBrowser({ initialPath = '/home/ryan', onSelect,
 
   async function handleCreateFolder() {
     if (!newFolderName?.trim()) return;
+    setError(null);
     const fullPath = currentPath === '/' ? `/${newFolderName.trim()}` : `${currentPath}/${newFolderName.trim()}`;
     try {
       await projects.mkdir(fullPath);

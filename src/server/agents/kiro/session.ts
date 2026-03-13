@@ -4,8 +4,6 @@ import { AgentSession } from '../types'
 import type { SessionStatus, AgentMessage } from '../types'
 import { normalizeKiroMessage } from './messages'
 
-let nextRpcId = 1
-
 export class KiroSession extends AgentSession {
   sessionId: string | null = null
   status: SessionStatus = 'starting'
@@ -16,6 +14,7 @@ export class KiroSession extends AgentSession {
   emitFromStdio = true
   private proc: ChildProcess | null = null
   private buffer = ''
+  private rpcId = 0
 
   constructor(
     private readonly cwd: string,
@@ -43,6 +42,11 @@ export class KiroSession extends AgentSession {
 
     this.proc.on('exit', (code) => {
       console.log(`[kiro] process exited code=${code}`)
+      // Reject any pending RPCs — process died before responding
+      for (const [, { reject }] of this.pendingRpc) {
+        reject(new Error(`Kiro process exited (code=${code}) with pending RPCs`))
+      }
+      this.pendingRpc.clear()
       if (this.status === 'running' || this.status === 'starting') {
         this.status = code === 0 ? 'completed' : 'errored'
       }
@@ -104,7 +108,7 @@ export class KiroSession extends AgentSession {
 
   private rpc(method: string, params: Record<string, unknown>): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      const id = nextRpcId++
+      const id = ++this.rpcId
       this.pendingRpc.set(id, { resolve, reject })
       this.write({ jsonrpc: '2.0', id, method, params })
     })
