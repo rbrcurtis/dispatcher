@@ -3,7 +3,7 @@ import { db } from '../db/index'
 import { cards, projects } from '../db/schema'
 import { eq } from 'drizzle-orm'
 import { sessionManager } from './manager'
-import type { AgentSession, AgentMessage, SessionStatus } from './types'
+import type { AgentSession, AgentMessage, SessionStatus, AgentType } from './types'
 import type { ConnectionManager } from '../ws/connections'
 import type { DbMutator } from '../db/mutator'
 import type { CreateSessionOpts } from './factory'
@@ -160,19 +160,22 @@ export async function beginSession(
     const cwd = ensureWorktree(card, mutator)
 
     let projectName: string | undefined
-    let agentType: 'claude' | 'kiro' = 'claude'
+    let agentType: AgentType = 'claude'
+    let agentProfile: string | undefined
 
     if (card.projectId) {
       const proj = db.select().from(projects).where(eq(projects.id, card.projectId)).get()
       if (proj) {
         projectName = proj.name.toLowerCase()
-        agentType = (proj.agentType as 'claude' | 'kiro') ?? 'claude'
+        agentType = (proj.agentType as AgentType) ?? 'claude'
+        agentProfile = proj.agentProfile ?? undefined
       }
     }
 
     const isResume = !!card.sessionId
     const opts: CreateSessionOpts = {
       agentType,
+      agentProfile,
       cwd,
       resumeSessionId: card.sessionId ?? undefined,
       projectName,

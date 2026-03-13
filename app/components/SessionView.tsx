@@ -7,7 +7,7 @@ import { Textarea } from '~/components/ui/textarea';
 import { Badge } from '~/components/ui/badge';
 import { Alert, AlertDescription } from '~/components/ui/alert';
 import { ContextGauge } from './ContextGauge';
-import { useSessionStore } from '~/stores/context';
+import { useSessionStore, useCardStore } from '~/stores/context';
 import type { FileRef } from '../../src/shared/ws-protocol';
 
 type Props = {
@@ -27,6 +27,7 @@ export const SessionView = observer(function SessionView({
   thinkingLevel,
 }: Props) {
   const sessionStore = useSessionStore();
+  const cardStore = useCardStore();
 
   const session = sessionStore.getSession(cardId);
   const conversation = session?.conversation ?? [];
