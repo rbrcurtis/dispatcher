@@ -59,15 +59,15 @@ export const fileRefSchema = z.object({
 
 export type FileRef = z.infer<typeof fileRefSchema>
 
-// ── Claude schemas ───────────────────────────────────────────────────────────
+// ── Agent schemas ───────────────────────────────────────────────────────────
 
-export const claudeSendSchema = z.object({
+export const agentSendSchema = z.object({
   cardId: z.number(),
   message: z.string(),
   files: z.array(fileRefSchema).optional(),
 })
 
-export const claudeStatusSchema = z.object({
+export const agentStatusSchema = z.object({
   cardId: z.number(),
   active: z.boolean(),
   status: z.enum(['starting', 'running', 'completed', 'errored', 'stopped']),
@@ -76,15 +76,41 @@ export const claudeStatusSchema = z.object({
   turnsCompleted: z.number(),
 })
 
-export const claudeMessageSchema = z.object({
+export const agentMessageSchema = z.object({
   type: z.string(),
-  message: z.record(z.string(), z.unknown()),
-  isSidechain: z.boolean().optional(),
-  ts: z.string().optional(),
+  role: z.enum(['user', 'assistant', 'system']),
+  content: z.string(),
+  toolCall: z.object({
+    id: z.string(),
+    name: z.string(),
+    params: z.record(z.string(), z.unknown()).optional(),
+  }).optional(),
+  toolResult: z.object({
+    id: z.string(),
+    output: z.string(),
+    isError: z.boolean().optional(),
+  }).optional(),
+  usage: z.object({
+    inputTokens: z.number(),
+    outputTokens: z.number(),
+    cacheRead: z.number().optional(),
+    cacheWrite: z.number().optional(),
+    contextWindow: z.number().optional(),
+  }).optional(),
+  modelUsage: z.record(z.string(), z.object({
+    inputTokens: z.number(),
+    outputTokens: z.number(),
+    cacheReadInputTokens: z.number(),
+    cacheCreationInputTokens: z.number(),
+    costUSD: z.number(),
+    contextWindow: z.number().optional(),
+  })).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
+  timestamp: z.number(),
 })
 
-export type ClaudeStatus = z.infer<typeof claudeStatusSchema>
-export type ClaudeMessage = z.infer<typeof claudeMessageSchema>
+export type AgentStatus = z.infer<typeof agentStatusSchema>
+export type AgentMessage = z.infer<typeof agentMessageSchema>
 
 // ── Client → Server messages ─────────────────────────────────────────────────
 
@@ -107,9 +133,9 @@ export const clientMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('project:delete'), requestId: z.string(), data: z.object({ id: z.number() }) }),
   z.object({ type: z.literal('project:browse'), requestId: z.string(), data: z.object({ path: z.string() }) }),
 
-  z.object({ type: z.literal('claude:send'), requestId: z.string(), data: claudeSendSchema }),
-  z.object({ type: z.literal('claude:stop'), requestId: z.string(), data: z.object({ cardId: z.number() }) }),
-  z.object({ type: z.literal('claude:status'), requestId: z.string(), data: z.object({ cardId: z.number() }) }),
+  z.object({ type: z.literal('agent:send'), requestId: z.string(), data: agentSendSchema }),
+  z.object({ type: z.literal('agent:stop'), requestId: z.string(), data: z.object({ cardId: z.number() }) }),
+  z.object({ type: z.literal('agent:status'), requestId: z.string(), data: z.object({ cardId: z.number() }) }),
 
   z.object({ type: z.literal('session:load'), requestId: z.string(), data: z.object({ sessionId: z.string(), cardId: z.number() }) }),
 ])
@@ -134,10 +160,10 @@ export const serverMessage = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('search:result'), requestId: z.string(), cards: z.array(cardSchema), total: z.number() }),
 
-  z.object({ type: z.literal('session:history'), requestId: z.string(), cardId: z.number(), messages: z.array(claudeMessageSchema) }),
+  z.object({ type: z.literal('session:history'), requestId: z.string(), cardId: z.number(), messages: z.array(agentMessageSchema) }),
 
-  z.object({ type: z.literal('claude:message'), cardId: z.number(), data: claudeMessageSchema }),
-  z.object({ type: z.literal('claude:status'), data: claudeStatusSchema }),
+  z.object({ type: z.literal('agent:message'), cardId: z.number(), data: agentMessageSchema }),
+  z.object({ type: z.literal('agent:status'), data: agentStatusSchema }),
 
   z.object({ type: z.literal('project:browse:result'), requestId: z.string(), data: z.unknown() }),
 ])
