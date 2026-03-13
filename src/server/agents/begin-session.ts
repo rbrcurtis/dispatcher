@@ -12,6 +12,8 @@ import {
   slugify,
   worktreeExists,
 } from '../worktree'
+import { getKiroSessionDir, getKiroSessionLogPath } from './kiro/session-path'
+import { KiroSessionTailer } from './kiro/tailer'
 
 const DISPLAY_TYPES = new Set([
   'user', 'text', 'tool_call', 'tool_result', 'tool_progress', 'thinking', 'system', 'turn_end', 'error',
@@ -193,6 +195,24 @@ export async function beginSession(
     session.promptsSent++
     await session.start(prompt)
     await session.waitForReady()
+
+    // Start Kiro log tailer as the sole event source (per spec: no dual-streaming)
+    if (agentType === 'kiro' && session.sessionId && agentProfile) {
+      // Disable stdio message emission — tailer is the sole source
+      const kiroSession = session as import('./kiro/session').KiroSession
+      kiroSession.emitFromStdio = false
+
+      // Use dynamic log path resolver (scans for .jsonl file).
+      // If file doesn't exist yet, pass the session dir to the tailer and let it poll.
+      const sessionDir = getKiroSessionDir(agentProfile, session.sessionId)
+      const logPath = getKiroSessionLogPath(agentProfile, session.sessionId)
+
+      const tailer = new KiroSessionTailer(logPath, sessionDir, cardId)
+      // Forward tailer messages through the session's event emitter
+      tailer.on('message', (msg: AgentMessage) => session.emit('message', msg))
+      tailer.start() // Polls for file creation if logPath is null
+      session.on('exit', () => tailer.stop())
+    }
 
     if (!isResume) {
       mutator.updateCard(cardId, {

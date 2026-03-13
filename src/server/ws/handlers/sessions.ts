@@ -5,9 +5,10 @@ import { readFile } from 'fs/promises'
 import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import { db } from '../../db/index'
-import { cards } from '../../db/schema'
+import { cards, projects } from '../../db/schema'
 import { eq } from 'drizzle-orm'
 import { getSDKSessionPath } from '../../agents/claude/session-path'
+import { getKiroSessionLogPath } from '../../agents/kiro/session-path'
 import { sessionManager } from '../../agents/manager'
 import { normalizeClaudeMessage, normalizeToolResult } from '../../agents/claude/messages'
 
@@ -82,7 +83,13 @@ function parseSessionFile(content: string): Record<string, unknown>[] {
 }
 
 /** Find the JSONL file for a session — SDK path first, then legacy fallback */
-function findSessionFile(sessionId: string, worktreePath: string | null): string | null {
+function findSessionFile(sessionId: string, worktreePath: string | null, agentProfile?: string | null): string | null {
+  // Try Kiro session path
+  if (agentProfile) {
+    const kiroPath = getKiroSessionLogPath(agentProfile, sessionId)
+    if (kiroPath) return kiroPath
+  }
+
   // Try SDK native path
   if (worktreePath) {
     const sdkPath = getSDKSessionPath(worktreePath, sessionId)
@@ -103,13 +110,34 @@ export async function handleSessionLoad(
 ): Promise<void> {
   const { requestId, data: { sessionId, cardId } } = msg
 
-  // Look up card to get worktreePath for SDK session file resolution
-  const card = db.select({ worktreePath: cards.worktreePath }).from(cards).where(eq(cards.id, cardId)).get()
-  const filePath = findSessionFile(sessionId, card?.worktreePath ?? null)
+  // Look up card to get worktreePath and projectId for session file resolution
+  const card = db.select({
+    worktreePath: cards.worktreePath,
+    projectId: cards.projectId,
+  }).from(cards).where(eq(cards.id, cardId)).get()
+
+  let agentProfile: string | null = null
+  let agentType: string | null = null
+  if (card?.projectId) {
+    const proj = db.select({
+      agentType: projects.agentType,
+      agentProfile: projects.agentProfile,
+    }).from(projects).where(eq(projects.id, card.projectId)).get()
+    agentType = proj?.agentType ?? null
+    agentProfile = proj?.agentProfile ?? null
+  }
+  const filePath = findSessionFile(sessionId, card?.worktreePath ?? null, agentProfile)
 
   let messages: AgentMessage[] = []
 
-  if (filePath) {
+  if (agentType === 'kiro' && agentProfile && filePath) {
+    // Kiro session — use Kiro normalizer
+    const { KiroSessionTailer } = await import('../../agents/kiro/tailer')
+    const { getKiroSessionDir } = await import('../../agents/kiro/session-path')
+    const sessionDir = getKiroSessionDir(agentProfile, sessionId)
+    const tailer = new KiroSessionTailer(filePath, sessionDir, cardId)
+    messages = tailer.readHistory()
+  } else if (filePath) {
     try {
       const content = await readFile(filePath, 'utf-8')
       const parsed = parseSessionFile(content)
