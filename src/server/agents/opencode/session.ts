@@ -54,6 +54,11 @@ export class OpenCodeSession extends AgentSession {
     if (!this.sessionId) throw new Error('No active session')
     const sdk = this.client as any
 
+    // Re-subscribe if SSE was lost (e.g. after error recovery)
+    if (!this.abortController || this.abortController.signal.aborted) {
+      this.subscribeToEvents()
+    }
+
     this.promptsSent++
     this.status = 'running'
 
@@ -123,21 +128,24 @@ export class OpenCodeSession extends AgentSession {
           const msg = normalizeOpenCodeEvent(event)
           if (msg) this.emit('message', msg)
 
-          // session.idle = assistant finished responding (turn complete)
+          // session.idle = assistant finished one response cycle (turn complete)
+          // Session stays alive for follow-up messages — don't break or emit exit
           if (event.type === 'session.idle') {
+            const sid = (event.properties as any)?.sessionID
+            if (sid && sid !== this.sessionId) continue
             this.turnsCompleted++
-            this.status = 'completed'
+            this.status = 'running'
             this.emit('message', {
               type: 'turn_end',
               role: 'system',
               content: '',
               timestamp: Date.now(),
             } satisfies AgentMessage)
-            this.emit('exit')
-            break
           }
 
           if (event.type === 'session.error') {
+            const sid = (event.properties as any)?.sessionID
+            if (sid && sid !== this.sessionId) continue
             this.status = 'errored'
             this.emit('exit')
             break
