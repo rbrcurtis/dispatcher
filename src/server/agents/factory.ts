@@ -1,5 +1,6 @@
 import type { AgentType, AgentSession } from './types'
 import { ClaudeSession } from './claude/session'
+import { KiroSession } from './kiro/session'
 
 export interface CreateSessionOpts {
   agentType: AgentType
@@ -22,7 +23,12 @@ export function createAgentSession(opts: CreateSessionOpts): AgentSession {
         (opts.thinkingLevel ?? 'high') as 'off' | 'low' | 'medium' | 'high',
       )
     case 'kiro':
-      throw new Error('Kiro agent not yet implemented')
+      if (!opts.agentProfile) throw new Error('Kiro agent requires agentProfile (HOME path)')
+      return new KiroSession(
+        opts.cwd,
+        opts.agentProfile,
+        opts.resumeSessionId,
+      )
     default:
       throw new Error(`Unknown agent type: ${opts.agentType}`)
   }
