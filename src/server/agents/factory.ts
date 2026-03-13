@@ -18,8 +18,8 @@ export function createAgentSession(opts: CreateSessionOpts): AgentSession {
         opts.cwd,
         opts.resumeSessionId,
         opts.projectName,
-        (opts.model as 'sonnet' | 'opus') ?? 'sonnet',
-        (opts.thinkingLevel as 'off' | 'low' | 'medium' | 'high') ?? 'high',
+        opts.model ?? 'sonnet',
+        opts.thinkingLevel ?? 'high',
       )
     case 'kiro':
       throw new Error('Kiro agent not yet implemented')

@@ -173,7 +173,7 @@ export async function beginSession(
     }
 
     const isResume = !!card.sessionId
-    const opts: CreateSessionOpts = {
+    const session = sessionManager.create(cardId, {
       agentType,
       agentProfile,
       cwd,
@@ -181,8 +181,7 @@ export async function beginSession(
       projectName,
       model: card.model,
       thinkingLevel: card.thinkingLevel,
-    }
-    const session = sessionManager.create(cardId, opts)
+    })
 
     // Restore counters from DB for resumed sessions (e.g. after server restart)
     if (isResume) {
