@@ -6,7 +6,6 @@ import { homedir } from 'os'
 import { join } from 'path'
 
 const OPENCODE_PORT = Number(process.env.OPENCODE_PORT ?? 4097)
-const CONFIG_PATH = resolve('data/opencode.json')
 const MAX_RETRIES = 5
 
 /** Resolve opencode binary — check common install locations if not on PATH */
@@ -53,12 +52,9 @@ export class OpenCodeServer {
 
   private spawn(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.proc = spawn(this.binaryPath, ['serve'], {
-        env: {
-          ...process.env,
-          OPENCODE_PORT: String(OPENCODE_PORT),
-          OPENCODE_CONFIG: CONFIG_PATH,
-        },
+      this.proc = spawn(this.binaryPath, ['serve', '--port', String(OPENCODE_PORT)], {
+        env: { ...process.env },
+        cwd: resolve('.'),
         stdio: ['ignore', 'pipe', 'pipe'],
       })
 
