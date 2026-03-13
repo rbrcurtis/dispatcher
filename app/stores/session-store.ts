@@ -32,6 +32,12 @@ export interface SessionState {
   contextWindow: number
 }
 
+function extractContextTokens(msg: AgentMessage): number | null {
+  if (msg.type !== 'text' || !msg.usage || msg.meta?.isSidechain) return null
+  const u = msg.usage
+  return (u.inputTokens ?? 0) + (u.cacheWrite ?? 0) + (u.cacheRead ?? 0)
+}
+
 function defaultSession(): SessionState {
   return {
     active: false,
@@ -83,16 +89,9 @@ export class SessionStore {
       s.conversation.push({ ...msg, id })
       s.conversationIds.add(id)
 
-      // Extract context fill from text messages (skip sidechain)
-      if (msg.type === 'text' && msg.usage && !msg.meta?.isSidechain) {
-        const u = msg.usage
-        const input = u.inputTokens ?? 0
-        const cacheCreate = u.cacheWrite ?? 0
-        const cacheRead = u.cacheRead ?? 0
-        s.contextTokens = input + cacheCreate + cacheRead
-      }
+      const tokens = extractContextTokens(msg)
+      if (tokens !== null) s.contextTokens = tokens
 
-      // Extract context window size from turn_end messages
       if (msg.type === 'turn_end' && msg.usage?.contextWindow !== undefined) {
         s.contextWindow = msg.usage.contextWindow
       }
@@ -126,18 +125,14 @@ export class SessionStore {
         s.conversation.unshift(...newRows)
       }
 
-      // Scan backward through conversation to seed context state
+      // Scan backward through conversation to seed context state from most recent turn
       let foundTokens = false
       let foundWindow = false
       for (let i = s.conversation.length - 1; i >= 0; i--) {
         const row = s.conversation[i]
-        if (!foundTokens && row.type === 'text' && row.usage && !row.meta?.isSidechain) {
-          const u = row.usage
-          const input = u.inputTokens ?? 0
-          const cacheCreate = u.cacheWrite ?? 0
-          const cacheRead = u.cacheRead ?? 0
-          s.contextTokens = input + cacheCreate + cacheRead
-          foundTokens = true
+        if (!foundTokens) {
+          const tokens = extractContextTokens(row)
+          if (tokens !== null) { s.contextTokens = tokens; foundTokens = true }
         }
         if (!foundWindow && row.type === 'turn_end' && row.usage?.contextWindow !== undefined) {
           s.contextWindow = row.usage.contextWindow

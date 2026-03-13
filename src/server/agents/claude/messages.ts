@@ -134,7 +134,7 @@ function normalizeResultMessage(msg: Record<string, unknown>, ts: number): Agent
     role: 'system',
     content: subtype ?? 'success',
     usage: contextWindow ? { inputTokens: 0, outputTokens: 0, contextWindow } : undefined,
-    modelUsage: modelUsage ?? undefined,
+    modelUsage,
     meta: {
       subtype,
       durationMs: inner.duration_ms,

@@ -18,7 +18,6 @@ type Props = {
   thinkingLevel: 'off' | 'low' | 'medium' | 'high';
 };
 
-
 export const SessionView = observer(function SessionView({
   cardId,
   sessionId,
@@ -43,7 +42,9 @@ export const SessionView = observer(function SessionView({
   const [isStarting, setIsStarting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const prevConvLen = useRef(0);
+  const nearBottomRef = useRef(true); // tracks if user is near bottom (for auto-scroll gating)
   const [compacted, setCompacted] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
@@ -82,48 +83,74 @@ export const SessionView = observer(function SessionView({
     }
   }, [sessionStatus]);
 
-  // Scroll to bottom when conversation changes
+  // ResizeObserver-based auto-scroll: fires after DOM layout changes.
+  // Computes near-bottom inline (scroll events are async and may be stale).
   useEffect(() => {
-    const len = conversation.length;
-    if (len === 0) { prevConvLen.current = 0; return; }
+    const content = contentRef.current;
+    const scroll = scrollRef.current;
+    if (!content || !scroll) return;
 
-    if (prevConvLen.current === 0) {
-      // Initial load / card switch: defer to next frame so DOM has rendered
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 0);
-    } else {
-      // New messages: smooth scroll if near bottom
-      const el = scrollRef.current;
-      if (el) {
-        const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-        if (nearBottom) {
-          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 0);
-        }
+    let prevHeight = content.scrollHeight;
+    let initialScroll = true;
+    let rafId = 0;
+
+    const ro = new ResizeObserver(() => {
+      const newHeight = content.scrollHeight;
+      if (newHeight <= prevHeight) { prevHeight = newHeight; return; }
+
+      // Compute near-bottom BEFORE updating prevHeight:
+      // If user was within threshold of the OLD bottom, they're "following along"
+      const gap = prevHeight - scroll.scrollTop - scroll.clientHeight;
+      const wasNearBottom = gap < 150;
+
+      prevHeight = newHeight;
+
+      if (rafId) cancelAnimationFrame(rafId);
+
+      if (initialScroll || wasNearBottom) {
+        initialScroll = false;
+        rafId = requestAnimationFrame(() => {
+          bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+          rafId = 0;
+        });
       }
-    }
+    });
 
-    // Compaction detection
-    const last = conversation[len - 1];
-    if (last.type === 'system' && last.meta?.subtype === 'compact_boundary') {
-      setCompacted(true);
-      setTimeout(() => setCompacted(false), 600);
-    }
+    ro.observe(content);
+    return () => { ro.disconnect(); if (rafId) cancelAnimationFrame(rafId); };
+  }, [cardId]);
 
-    prevConvLen.current = len;
-  }, [conversation.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Show/hide scroll-to-bottom button based on scroll position
+  // Track scroll position for near-bottom gating + scroll-to-bottom button
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     function onScroll() {
       if (!el) return;
-      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-      setShowScrollBtn(!nearBottom);
+      const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+      nearBottomRef.current = gap < 120;
+      setShowScrollBtn(gap >= 60);
     }
     onScroll();
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [conversation.length]);
+  }, [cardId]);
+
+  // Compaction detection
+  useEffect(() => {
+    const len = conversation.length;
+    if (len === 0) { prevConvLen.current = 0; return; }
+    const last = conversation[len - 1];
+    if (last.type === 'system' && last.meta?.subtype === 'compact_boundary') {
+      setCompacted(true);
+      setTimeout(() => setCompacted(false), 600);
+    }
+    prevConvLen.current = len;
+  }, [conversation.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Card switch: reset near-bottom so next content triggers instant scroll
+  useEffect(() => {
+    nearBottomRef.current = true;
+  }, [cardId]);
 
   // Extract tool outputs from conversation
   const toolOutputs = useMemo(() => {
@@ -162,7 +189,7 @@ export const SessionView = observer(function SessionView({
       {/* Messages — scrollable middle area */}
       <div className="relative flex-1 min-h-0 min-w-0">
         <div ref={scrollRef} className="h-full overflow-y-auto overflow-x-hidden">
-          <div className="px-3 py-2 space-y-1 min-w-0">
+          <div ref={contentRef} className="px-3 py-2 space-y-1 min-w-0">
             {conversation.map((row) => (
               <MessageBlock
                 key={row.id}
