@@ -79,7 +79,7 @@ export const agentStatusSchema = z.object({
 })
 
 export const agentMessageSchema = z.object({
-  type: z.string(),
+  type: z.enum(['text', 'tool_call', 'tool_result', 'thinking', 'system', 'turn_end', 'error', 'user', 'tool_progress']),
   role: z.enum(['user', 'assistant', 'system']),
   content: z.string(),
   toolCall: z.object({
