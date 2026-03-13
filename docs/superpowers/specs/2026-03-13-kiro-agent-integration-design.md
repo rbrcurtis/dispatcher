@@ -58,10 +58,10 @@ Spawns `kiro-cli acp` over stdio with `HOME` set to the `agentProfile` path and 
 
 **Lifecycle:**
 
-- `start(prompt)` — Spawn child process with `{ env: { ...process.env, HOME: agentProfile }, cwd }`. Send `initialize` JSON-RPC request. On response, extract `sessionId` from the initialize result (likely `result.sessionId` or from the subsequent `session/new` response — exact field TBD during implementation by inspecting ACP output). Then send `session/new` (or `session/load` if `resumeSessionId` is set). Finally, send `session/prompt` with the initial `prompt` string. This matches `ClaudeSession.start(prompt)` which also sends the first prompt before returning.
+- `start(prompt)` — Spawn child process with `{ env: { ...process.env, HOME: agentProfile }, cwd }`. Send `initialize` JSON-RPC request. On response, extract `sessionId` from the initialize result (likely `result.sessionId` or from the subsequent `session/new` response — exact field TBD during implementation by inspecting ACP output). Then send `session/new` for new sessions, or `session/load` if `resumeSessionId` is set. Finally, send `session/prompt` with `prompt`. On resume, `prompt` is the new follow-up message (not the original card prompt) — the caller is responsible for providing the right prompt for the context.
 - `sendMessage(text)` — Send `session/prompt` JSON-RPC request with additional prompts (after the first).
 - `kill()` — Guard against already-exited process or pre-init state. If the process is running, send `session/cancel` (ignoring EPIPE), then kill the child process. If already exited, no-op.
-- `waitForReady()` — Wait for `sessionId` to be captured (30s timeout, same pattern as ClaudeSession).
+- `waitForReady()` — Wait for `sessionId` to be captured (30s timeout, same pattern as ClaudeSession). Called by `SessionManager` after `start()` returns and before the tailer begins — the tailer needs `sessionId` for path resolution. Sequence: `start()` → `waitForReady()` → tailer starts.
 
 ### Message Normalization
 
@@ -103,6 +103,8 @@ Implemented in `src/server/agents/kiro/tailer.ts` as `KiroSessionTailer` (or by 
 ### Live Tailing
 
 During an active session, use the JSONL file tail as the **sole event source** (not stdio). The stdio stream handles only the JSON-RPC request/response transport for `initialize`, `session/new`, `session/prompt`, and `session/cancel`. All streaming content (agent messages, tool calls, etc.) is read from the JSONL file via tailing. This avoids dual-stream deduplication problems. If the JSONL file approach proves unreliable during implementation, fall back to stdio-only with no file tailing — never both simultaneously without dedup.
+
+**File availability:** The tailer must handle the case where the JSONL file doesn't exist yet when tailing starts (Kiro may create it lazily after the first turn). Poll for file creation with a short interval (500ms) before beginning the tail watch, with a timeout matching `waitForReady()` (30s).
 
 ### Path Resolution
 
