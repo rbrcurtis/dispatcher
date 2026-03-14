@@ -1,6 +1,6 @@
 import type { AgentSession } from './types'
 import { OpenCodeSession } from './opencode/session'
-import { resolveModelID } from './opencode/models'
+import { resolveModel } from './opencode/models'
 import { openCodeServer } from '../opencode/server'
 
 export interface CreateSessionOpts {
@@ -16,12 +16,13 @@ export function createAgentSession(opts: CreateSessionOpts): AgentSession {
   if (!openCodeServer.client) {
     throw new Error('OpenCode server not ready')
   }
-  const modelID = resolveModelID(opts.model, opts.thinkingLevel)
+  const { modelID, variant } = resolveModel(opts.providerID, opts.model, opts.thinkingLevel)
   return new OpenCodeSession(
     openCodeServer.client,
     opts.cwd,
     opts.providerID,
     modelID,
+    variant,
     opts.resumeSessionId,
   )
 }

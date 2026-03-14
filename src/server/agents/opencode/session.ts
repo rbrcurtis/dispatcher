@@ -1,12 +1,12 @@
 import { AgentSession } from '../types'
 import type { SessionStatus, AgentMessage } from '../types'
 import { normalizeOpenCodeEvent } from './messages'
-import { resolveModelID } from './models'
+import { resolveModel } from './models'
 
 interface SdkClient {
   session: {
     create(opts: { body: { title: string }; query: { directory: string } }): Promise<{ data?: { id: string }; id?: string }>
-    prompt(opts: { path: { id: string }; body: { parts: { type: string; text: string }[]; model: { providerID: string; modelID: string } }; query: { directory: string } }): Promise<void>
+    prompt(opts: { path: { id: string }; body: { parts: { type: string; text: string }[]; model: { providerID: string; modelID: string }; variant?: string }; query: { directory: string } }): Promise<void>
     abort(opts: { path: { id: string } }): Promise<void>
   }
   event: {
@@ -28,6 +28,7 @@ export class OpenCodeSession extends AgentSession {
     private cwd: string,
     private providerID: string,
     private modelID: string,
+    private variant: string | undefined,
     private resumeSessionId?: string,
   ) {
     super()
@@ -56,6 +57,7 @@ export class OpenCodeSession extends AgentSession {
       body: {
         parts: [{ type: 'text', text: prompt }],
         model: { providerID: this.providerID, modelID: this.modelID },
+        ...(this.variant !== undefined ? { variant: this.variant } : {}),
       },
       query: { directory: this.cwd },
     })
@@ -78,16 +80,20 @@ export class OpenCodeSession extends AgentSession {
       body: {
         parts: [{ type: 'text', text: content }],
         model: { providerID: this.providerID, modelID: this.modelID },
+        ...(this.variant !== undefined ? { variant: this.variant } : {}),
       },
       query: { directory: this.cwd },
     })
   }
 
   updateModel(model: string, thinkingLevel: string): void {
-    this.modelID = resolveModelID(
+    const resolved = resolveModel(
+      this.providerID,
       model as 'sonnet' | 'opus',
       thinkingLevel as 'off' | 'low' | 'medium' | 'high',
     )
+    this.modelID = resolved.modelID
+    this.variant = resolved.variant
   }
 
   async kill(): Promise<void> {
