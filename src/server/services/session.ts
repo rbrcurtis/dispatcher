@@ -234,7 +234,7 @@ class SessionService {
     }
   }
 
-  async getHistory(sessionId: string, cardId: number): Promise<AgentMessage[]> {
+  async getHistory(sessionId: string, _cardId: number): Promise<AgentMessage[]> {
     const { openCodeServer } = await import('../opencode/server')
     if (!openCodeServer.client) return []
 
