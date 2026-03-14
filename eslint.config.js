@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
   // Ignore patterns
-  { ignores: ['node_modules/**', 'build/**', '.react-router/**', 'data/**'] },
+  { ignores: ['node_modules/**', 'build/**', '.react-router/**', 'data/**', '.worktrees/**'] },
 
   // TypeScript files
   {
