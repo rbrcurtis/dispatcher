@@ -3,8 +3,8 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "react-router build",
-    "dev": "cross-env NODE_ENV=development node server.js",
+    "build": "pnpm tsoa:generate && react-router build",
+    "dev": "pnpm tsoa:generate && cross-env NODE_ENV=development node server.js",
     "start": "node server.js",
     "typecheck": "react-router typegen && tsc -b",
     "lint": "eslint . --fix --max-warnings 0",
