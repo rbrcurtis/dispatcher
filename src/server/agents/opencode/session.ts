@@ -239,7 +239,7 @@ export class OpenCodeSession extends AgentSession {
                   path: { id: permSessionId, permissionID: perm.id },
                   body: { response: 'always' },
                 }).then(() => {
-                  this.log(`permission:approve ${perm.id} type=${perm.type}`)
+                  this.log(`permission:approved ${perm.id}`)
                 }).catch(err => this.log('permission:error ' + String(err)))
               }
               continue
