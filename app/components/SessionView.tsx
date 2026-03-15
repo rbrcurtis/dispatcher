@@ -202,9 +202,9 @@ export const SessionView = observer(function SessionView({
       <div className="relative flex-1 min-h-0 min-w-0">
         <div ref={scrollRef} className="h-full overflow-y-auto overflow-x-hidden">
           <div ref={contentRef} className="px-3 py-2 space-y-1 min-w-0">
-            {conversation.map((row) => (
+            {conversation.map((row, i) => (
               <MessageBlock
-                key={row.id}
+                key={`${row.id}-${i}`}
                 message={row}
                 toolOutputs={toolOutputs}
                 accentColor={accentColor}
