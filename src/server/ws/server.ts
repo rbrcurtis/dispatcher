@@ -2,7 +2,6 @@ import { WebSocketServer } from 'ws'
 import type { Server as HttpServer } from 'http'
 import type { Http2SecureServer } from 'http2'
 import type { Plugin } from 'vite'
-import { getRequestListener } from '@hono/node-server'
 import { ConnectionManager } from './connections'
 import { validateCfAccess } from './auth'
 
@@ -67,8 +66,7 @@ export function wsServerPlugin(): Plugin {
           import('./subscriptions'),
           import('../bus'),
           import('../opencode/server'),
-          import('../api/rest'),
-        ]).then(async ([{ initDatabase }, { handleMessage }, { clientSubs }, { messageBus }, { openCodeServer }, { createRestApi }]) => {
+        ]).then(async ([{ initDatabase }, { handleMessage }, { clientSubs }, { messageBus }, { openCodeServer }]) => {
           await initDatabase()
 
           createWsServer(server.httpServer!, handleMessage, clientSubs)
@@ -85,13 +83,41 @@ export function wsServerPlugin(): Plugin {
             console.error('[opencode] failed to start:', err)
           })
 
-          // REST API middleware
-          const restApp = createRestApi()
-          const restHandler = getRequestListener(restApp.fetch)
+          // REST API middleware (tsoa-generated routes)
+          const express = await import('express')
+          const { RegisterRoutes } = await import('../api/generated/routes')
 
+          const restApp = express.default.Router()
+          restApp.use(express.default.json())
+          RegisterRoutes(restApp)
+
+          // Serve OpenAPI spec and Swagger UI
+          const { readFileSync } = await import('fs')
+          const { resolve } = await import('path')
+          const swaggerUi = await import('swagger-ui-express')
+
+          const specPath = resolve(import.meta.dirname, '../api/generated/swagger.json')
+          const spec = JSON.parse(readFileSync(specPath, 'utf-8'))
+
+          restApp.get('/api/docs/swagger.json', (_req: import('express').Request, res: import('express').Response) => {
+            res.json(spec)
+          })
+          restApp.use('/api/docs', swaggerUi.serve, swaggerUi.setup(spec))
+
+          // Error handler for tsoa validation errors
+          restApp.use((err: unknown, _req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+            if (err && typeof err === 'object' && 'status' in err) {
+              const e = err as { status: number; message?: string; fields?: Record<string, unknown> }
+              res.status(e.status).json({ error: e.message ?? 'Validation error', fields: e.fields })
+              return
+            }
+            next(err)
+          })
+
+          // Mount without prefix stripping — tsoa generates full paths from @Route('api')
           server.middlewares.use((req, res, next) => {
-            if (req.url?.startsWith('/api/cards')) {
-              restHandler(req, res)
+            if (req.url?.startsWith('/api/')) {
+              restApp(req, res, next)
             } else {
               next()
             }
