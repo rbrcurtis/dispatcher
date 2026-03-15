@@ -62,7 +62,7 @@ export class SessionStore {
   private subagentTimeouts = new Map<string, NodeJS.Timeout>();
 
   constructor() {
-    makeAutoObservable(this);
+    makeAutoObservable(this, { subagentTimeouts: false });
   }
 
   private getOrCreate(cardId: number): SessionState {
