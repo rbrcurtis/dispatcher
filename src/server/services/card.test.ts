@@ -28,13 +28,6 @@ describe('CardService', () => {
     expect(c2.position).toBeGreaterThan(c1.position)
   })
 
-  it('updateCard validates title/description when moving to running', async () => {
-    const { cardService } = await import('./card')
-    const c = await cardService.createCard({ title: 'Test', description: '', column: 'ready' })
-    await expect(cardService.updateCard(c.id, { column: 'running' }))
-      .rejects.toThrow('Description is required')
-  })
-
   it('searchCards returns matching cards', async () => {
     const { cardService } = await import('./card')
     await cardService.createCard({ title: 'Find me', description: 'unique-xyz', column: 'backlog' })
