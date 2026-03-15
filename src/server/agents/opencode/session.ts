@@ -163,23 +163,13 @@ export class OpenCodeSession extends AgentSession {
 
             if (this.abortController?.signal.aborted) break
 
-            // Filter events to this session — parts carry sessionID directly
-            const props = event.properties as { sessionID?: string; part?: { sessionID?: string }; info?: { sessionID?: string } }
-            const sessionID =
-              props.sessionID ??
-              props.part?.sessionID ??
-              props.info?.sessionID
-            if (sessionID && sessionID !== this.sessionId) {
-              console.log(`[opencode-session:${this.sessionId}] skipping event for session ${sessionID}`)
-              continue
-            }
-
             // Auto-approve ALL permission requests (Dispatcher runs in full-trust mode)
+            // Must run before session filter so subagent permissions are also approved
             if (event.type === 'permission.asked' || event.type === 'permission.updated') {
               const perm = event.properties as { id?: string; sessionID?: string; type?: string; title?: string }
               const permSessionId = perm.sessionID ?? this.sessionId!
               if (perm.id) {
-                console.log(`[opencode-session:${this.sessionId}] auto-approving permission ${perm.id} (type=${perm.type}, session=${perm.sessionID}, title=${perm.title})`)
+                console.log(`[opencode-session:${this.sessionId}] auto-approving permission ${perm.id} (type=${perm.type}, session=${permSessionId}, title=${perm.title})`)
                 sdk.postSessionIdPermissionsPermissionId({
                   path: { id: permSessionId, permissionID: perm.id },
                   body: { response: 'always' },
@@ -189,6 +179,17 @@ export class OpenCodeSession extends AgentSession {
               } else {
                 console.log(`[opencode-session:${this.sessionId}] permission event without id:`, JSON.stringify(event.properties))
               }
+              continue
+            }
+
+            // Filter events to this session — parts carry sessionID directly
+            const props = event.properties as { sessionID?: string; part?: { sessionID?: string }; info?: { sessionID?: string } }
+            const sessionID =
+              props.sessionID ??
+              props.part?.sessionID ??
+              props.info?.sessionID
+            if (sessionID && sessionID !== this.sessionId) {
+              console.log(`[opencode-session:${this.sessionId}] skipping event for session ${sessionID}`)
               continue
             }
 
