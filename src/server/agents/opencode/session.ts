@@ -74,7 +74,13 @@ export class OpenCodeSession extends AgentSession {
     this.childrenResolvePending = true
     try {
       const sdk = this.client as unknown as SdkClient
-      const children = await sdk.session.children({ path: { id: this.sessionId } })
+      const res = await sdk.session.children({ path: { id: this.sessionId } })
+      // SDK may wrap response in { data: [...] } or return bare array
+      const children = Array.isArray(res) ? res : ((res as Record<string, unknown>).data as Array<{ id: string; title: string; parentID?: string }>) ?? []
+      if (!Array.isArray(children)) {
+        this.log(`child:resolve-unexpected response=${JSON.stringify(res).slice(0, 200)}`)
+        return
+      }
       for (const child of children) {
         if (!this.childSessions.has(child.id)) {
           this.childSessions.set(child.id, { title: child.title, status: 'running' })
