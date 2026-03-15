@@ -218,10 +218,7 @@ describe('OC controller: registerWorktreeCleanup', () => {
     const { registerWorktreeCleanup } = await import('./oc')
     registerWorktreeCleanup(bus, { removeWorktree: removeMock, worktreeExists: existsMock })
 
-    const proj = Project.create({
-      name: 'WT Project', path: '/tmp/wt-proj',
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    })
+    const proj = Project.create({ name: 'WT Project', path: '/tmp/wt-proj', createdAt: new Date().toISOString() } as Partial<Project> as Project)
     await proj.save()
 
     const card = Card.create({
