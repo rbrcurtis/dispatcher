@@ -1,7 +1,6 @@
 import { ILike } from 'typeorm'
 import { Card } from '../models/Card'
 import type { Column } from '../../shared/ws-protocol'
-import { removeWorktree, worktreeExists } from '../worktree'
 import { Project } from '../models/Project'
 
 export interface PageResult {
@@ -64,51 +63,15 @@ class CardService {
     })
     await card.save()
 
-    // Auto-start session when creating directly into running
-    if (col === 'running') {
-      import('./session').then(({ sessionService }) =>
-        sessionService.startSession(card.id, undefined)
-      ).catch(err => console.error(`[card:${card.id}] failed to auto-start session:`, err))
-    }
-
     return card
   }
 
   async updateCard(id: number, data: Partial<Card>): Promise<Card> {
     const card = await Card.findOneByOrFail({ id })
-    const movingToRunning = data.column === 'running' && card.column !== 'running'
-    const movingToArchive = data.column === 'archive' && card.column !== 'archive'
-
-    // Validate: running requires non-empty title and description
-    if (data.column === 'running') {
-      const title = data.title ?? card.title
-      const desc = data.description !== undefined ? data.description : card.description
-      if (!title?.trim()) throw new Error('Title is required for running')
-      if (!desc?.trim()) throw new Error('Description is required for running')
-    }
-
-    // Worktree removal when archiving
-    if (movingToArchive && card.useWorktree && card.worktreePath && card.projectId) {
-      const proj = await Project.findOneBy({ id: card.projectId })
-      if (proj && worktreeExists(card.worktreePath)) {
-        try {
-          removeWorktree(proj.path, card.worktreePath)
-        } catch (err) {
-          console.error(`[card:${id}] failed to remove worktree:`, err)
-        }
-      }
-    }
 
     Object.assign(card, data)
     card.updatedAt = new Date().toISOString()
     await card.save()
-
-    // Auto-start session when moving to running
-    if (movingToRunning) {
-      import('./session').then(({ sessionService }) =>
-        sessionService.startSession(card.id, undefined)
-      ).catch(err => console.error(`[card:${id}] failed to auto-start session:`, err))
-    }
 
     return card
   }
