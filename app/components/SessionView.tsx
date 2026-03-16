@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Send, Square, AlertCircle, ChevronDown, Paperclip } from 'lucide-react';
+import { Send, Square, AlertCircle, ChevronDown, Paperclip, X } from 'lucide-react';
 import { MessageBlock } from './MessageBlock';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { Badge } from '~/components/ui/badge';
-import { Alert, AlertDescription } from '~/components/ui/alert';
 import { ContextGauge } from './ContextGauge';
 import { SubagentFeed } from './SubagentFeed';
 import { useSessionStore, useCardStore } from '~/stores/context';
@@ -40,7 +39,7 @@ export const SessionView = observer(function SessionView({
   const contextWindow = session?.contextWindow ?? 200_000;
   const subagents = session?.subagents ?? new Map();
 
-  const [startError, setStartError] = useState<string | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -69,7 +68,7 @@ export const SessionView = observer(function SessionView({
 
   // Card switch reset
   useEffect(() => {
-    setStartError(null);
+    setNotification(null);
     setIsStarting(false);
     setCompacted(false);
     prevConvLen.current = 0; // ensure scroll-to-bottom fires for the new card
@@ -87,6 +86,16 @@ export const SessionView = observer(function SessionView({
       setIsStarting(false);
     }
   }, [sessionStatus]);
+
+  // Show notification when session errors
+  useEffect(() => {
+    if (sessionStatus === 'errored') {
+      const last = conversation.findLast(m => m.type === 'error');
+      if (last?.content) setNotification(last.content);
+    } else if (sessionStatus !== 'errored') {
+      setNotification(null);
+    }
+  }, [sessionStatus, conversation.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ResizeObserver-based auto-scroll: fires after DOM layout changes.
   // Computes near-bottom inline (scroll events are async and may be stale).
@@ -183,7 +192,7 @@ export const SessionView = observer(function SessionView({
     try {
       await sessionStore.sendMessage(cardId, message, files);
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : String(err));
+      setNotification(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -231,15 +240,6 @@ export const SessionView = observer(function SessionView({
           </button>
         )}
       </div>
-
-      {startError && (
-        <div className="px-3 pt-2 shrink-0">
-          <Alert variant="destructive">
-            <AlertCircle className="size-4" />
-            <AlertDescription>{startError}</AlertDescription>
-          </Alert>
-        </div>
-      )}
 
       {/* Status bar — above prompt input */}
       {(isStreaming || conversation.length > 0) && (
@@ -292,6 +292,9 @@ export const SessionView = observer(function SessionView({
       {/* Subagent activity feed */}
       <SubagentFeed subagents={subagents} />
 
+      {/* Error notification */}
+      <SessionNotification message={notification} onDismiss={() => setNotification(null)} />
+
       {/* Prompt input — pinned to bottom */}
       <PromptInput
         cardId={cardId}
@@ -337,6 +340,21 @@ function StatusBadge({ status }: { status: string }) {
     <Badge variant={variant} className="text-xs">
       {label}
     </Badge>
+  );
+}
+
+// --- Session notification ---
+
+function SessionNotification({ message, onDismiss }: { message: string | null; onDismiss: () => void }) {
+  if (!message) return null;
+  return (
+    <div className="mx-3 my-1.5 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive shrink-0">
+      <AlertCircle className="mt-0.5 size-4 shrink-0" />
+      <span className="flex-1 break-words">{message}</span>
+      <button type="button" onClick={onDismiss} className="shrink-0 hover:opacity-70">
+        <X className="size-4" />
+      </button>
+    </div>
   );
 }
 

@@ -413,6 +413,16 @@ export class OpenCodeSession extends AgentSession {
               // Ignore errors caused by our own abort (user hit stop)
               if (this.status === 'stopped') break
               this.log('session:error ' + JSON.stringify(event.properties))
+              const rawErr = (event.properties as { error?: { name?: string; message?: string; data?: { message?: string } } | string }).error
+              const errMsg = typeof rawErr === 'string'
+                ? rawErr
+                : rawErr?.data?.message ?? rawErr?.message ?? rawErr?.name ?? 'Unknown session error'
+              this.emit('message', {
+                type: 'error',
+                role: 'system',
+                content: errMsg,
+                timestamp: Date.now(),
+              } satisfies AgentMessage)
               this.status = 'errored'
               this.emit('exit')
               break
