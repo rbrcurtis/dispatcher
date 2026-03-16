@@ -39,6 +39,17 @@ export default defineConfig(({ isSsrBuild }) => ({
         }
       : undefined,
   },
+  optimizeDeps: {
+    noDiscovery: true,
+    include: [
+      'react', 'react/jsx-runtime', 'react/jsx-dev-runtime',
+      'react-dom', 'react-dom/client', 'react-router', 'react-router/dom',
+      'mobx', 'mobx-react-lite', 'lucide-react', 'radix-ui',
+      '@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities',
+      'class-variance-authority', 'clsx', 'tailwind-merge',
+      'idb-keyval', 'zod', 'react-markdown', 'remark-gfm',
+    ],
+  },
   server: {
     port: Number(process.env.PORT) || 6194,
     host: process.env.HOST || '0.0.0.0',
