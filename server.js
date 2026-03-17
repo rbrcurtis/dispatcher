@@ -53,5 +53,6 @@ const httpServer = app.listen(PORT, HOST, () => {
 });
 
 if (DEVELOPMENT) {
+  // @ts-expect-error custom event for Vite WS plugin
   process.emit('dispatcher:httpServer', httpServer);
 }
