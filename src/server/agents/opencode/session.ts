@@ -6,8 +6,7 @@ import { resolveModel } from './models'
 interface SdkClient {
   session: {
     create(opts: { title: string; directory: string }): Promise<{ data?: { id: string }; id?: string }>
-    prompt(opts: { sessionID: string; parts: { type: string; text: string }[]; model: { providerID: string; modelID: string }; variant?: string; directory: string }): Promise<void>
-    promptAsync(opts: { sessionID: string; parts: { type: string; text: string }[]; model: { providerID: string; modelID: string }; variant?: string; directory: string }): Promise<void>
+    prompt(opts: { sessionID: string; parts: { type: string; text: string }[]; model: { providerID: string; modelID: string }; variant?: string; directory: string; tools?: Record<string, boolean> }): Promise<void>
     abort(opts: { sessionID: string }): Promise<void>
     children(opts: { sessionID: string }): Promise<Array<{ id: string; title: string; parentID?: string }>>
   }
@@ -25,9 +24,13 @@ export class OpenCodeSession extends AgentSession {
   promptsSent = 0
   turnsCompleted = 0
 
+  private static PROMPT_TIMEOUT_MS = 60_000
+
   private abortController: AbortController | null = null
   private sseCleanup: (() => void) | null = null
   private sseAlive = false
+  private promptTimer: ReturnType<typeof setTimeout> | null = null
+  private idleFallbackTimer: ReturnType<typeof setTimeout> | null = null
   private turnCost = 0
   private turnTokens: { input: number; output: number; cacheRead: number; cacheWrite: number } | null = null
   private userMessageIds = new Set<string>()
@@ -54,6 +57,34 @@ export class OpenCodeSession extends AgentSession {
       this.log(`status: ${this._status} → ${val}`)
       this._status = val
     }
+  }
+
+  private resetPromptTimer(reason: string): void {
+    this.log(`timer:reset reason=${reason}`)
+    if (this.promptTimer) clearTimeout(this.promptTimer)
+    this.promptTimer = setTimeout(() => {
+      this.log(`prompt:timeout after ${OpenCodeSession.PROMPT_TIMEOUT_MS}ms (status=${this._status}, turns=${this.turnsCompleted}, prompts=${this.promptsSent})`)
+      this.emit('message', {
+        type: 'error',
+        role: 'system',
+        content: `Session timed out — no activity for ${OpenCodeSession.PROMPT_TIMEOUT_MS / 1000}s after prompt`,
+        timestamp: Date.now(),
+      } satisfies AgentMessage)
+      this.kill()
+    }, OpenCodeSession.PROMPT_TIMEOUT_MS)
+  }
+
+  private clearPromptTimer(reason: string): void {
+    if (this.promptTimer) {
+      this.log(`timer:clear reason=${reason}`)
+      clearTimeout(this.promptTimer)
+    }
+    this.promptTimer = null
+  }
+
+  private clearIdleFallbackTimer(): void {
+    if (this.idleFallbackTimer) clearTimeout(this.idleFallbackTimer)
+    this.idleFallbackTimer = null
   }
 
   private log(msg: string): void {
@@ -130,15 +161,7 @@ export class OpenCodeSession extends AgentSession {
     this.log('sse:connect')
 
     this.promptsSent++
-    this.log('prompt:send length=' + prompt.length)
-    await sdk.session.promptAsync({
-      sessionID: this.sessionId!,
-      parts: [{ type: 'text', text: prompt }],
-      model: { providerID: this.providerID, modelID: this.modelID },
-      ...(this.variant !== undefined ? { variant: this.variant } : {}),
-      directory: this.cwd,
-    })
-    this.log('prompt:ack')
+    this.sendPrompt(sdk, prompt)
   }
 
   async sendMessage(content: string): Promise<void> {
@@ -153,16 +176,65 @@ export class OpenCodeSession extends AgentSession {
 
     this.promptsSent++
     this.status = 'starting'
+    this.sendPrompt(sdk, content)
+  }
 
-    this.log('prompt:send length=' + content.length)
-    await sdk.session.promptAsync({
-      sessionID: this.sessionId,
-      parts: [{ type: 'text', text: content }],
-      model: { providerID: this.providerID, modelID: this.modelID },
-      ...(this.variant !== undefined ? { variant: this.variant } : {}),
-      directory: this.cwd,
-    })
-    this.log('prompt:ack')
+  private sendPrompt(sdk: SdkClient, content: string): void {
+    this.log(`prompt:send length=${content.length}`)
+    this.resetPromptTimer('prompt:send')
+
+    void (async () => {
+      try {
+        await sdk.session.prompt({
+          sessionID: this.sessionId!,
+          parts: [{ type: 'text', text: content }],
+          model: { providerID: this.providerID, modelID: this.modelID },
+          ...(this.variant !== undefined ? { variant: this.variant } : {}),
+          directory: this.cwd,
+          tools: { question: false },
+        })
+        this.log(`prompt:resolved (status=${this._status})`)
+        this.clearPromptTimer('prompt:resolved')
+        this.idleFallbackTimer = setTimeout(() => {
+          if (this.status === 'running' || this.status === 'starting') {
+            this.log(`idle:fallback — no session.idle within 5s of prompt:resolved (status=${this._status}, turns=${this.turnsCompleted})`)
+            this.turnsCompleted++
+            this.status = 'completed'
+            this.emit('message', {
+              type: 'turn_end',
+              role: 'system',
+              content: '',
+              meta: {
+                subtype: 'success',
+                totalCostUsd: this.turnCost,
+                turnNumber: this.turnsCompleted,
+              },
+              usage: this.turnTokens ? {
+                inputTokens: this.turnTokens.input,
+                outputTokens: this.turnTokens.output,
+                cacheRead: this.turnTokens.cacheRead,
+                cacheWrite: this.turnTokens.cacheWrite,
+              } : undefined,
+              timestamp: Date.now(),
+            } satisfies AgentMessage)
+            this.turnCost = 0
+            this.turnTokens = null
+          }
+        }, 5_000)
+      } catch (err) {
+        if (this.status === 'stopped') return
+        this.log(`prompt:error (status=${this._status}) ${String(err)}`)
+        this.clearPromptTimer('prompt:error')
+        this.emit('message', {
+          type: 'error',
+          role: 'system',
+          content: `Prompt failed: ${String(err)}`,
+          timestamp: Date.now(),
+        } satisfies AgentMessage)
+        this.status = 'errored'
+        this.emit('exit')
+      }
+    })()
   }
 
   updateModel(model: string, thinkingLevel: string): void {
@@ -176,6 +248,8 @@ export class OpenCodeSession extends AgentSession {
   }
 
   async kill(): Promise<void> {
+    this.clearPromptTimer('kill')
+    this.clearIdleFallbackTimer()
     if (!this.sessionId) return
     const sdk = this.client as unknown as SdkClient
 
@@ -185,7 +259,7 @@ export class OpenCodeSession extends AgentSession {
     this.status = 'stopped'
 
     try {
-      this.log('kill')
+      this.log(`kill (status=${this._status}, turns=${this.turnsCompleted})`)
       await sdk.session.abort({ sessionID: this.sessionId })
     } catch (err) {
       this.log('kill:error ' + String(err))
@@ -236,9 +310,10 @@ export class OpenCodeSession extends AgentSession {
             // Must run before session filter so subagent permissions are also approved
             if (event.type === 'permission.asked' || event.type === 'permission.updated') {
               const perm = event.properties as { id?: string; sessionID?: string; type?: string; title?: string }
-              const permSessionId = perm.sessionID ?? this.sessionId!
               if (perm.id) {
                 this.log(`permission:approve ${perm.id} type=${perm.type}`)
+                // Permission events indicate active agent work — reset timeout
+                if (this.promptTimer) this.resetPromptTimer('permission')
                 sdk.permission.reply({ requestID: perm.id, reply: 'always' }).then(() => {
                   this.log(`permission:approved ${perm.id}`)
                 }).catch(err => this.log('permission:error ' + String(err)))
@@ -246,12 +321,18 @@ export class OpenCodeSession extends AgentSession {
               continue
             }
 
-            // Filter events to this session — parts carry sessionID directly
-            const props = event.properties as { sessionID?: string; part?: { sessionID?: string }; info?: { sessionID?: string } }
+            // Extract session ID — different event types carry it in different places
+            // session.updated: info.id | message.part.updated: part.sessionID | others: sessionID
+            const props = event.properties as { sessionID?: string; part?: { sessionID?: string }; info?: { sessionID?: string; id?: string } }
             const sessionID =
               props.sessionID ??
               props.part?.sessionID ??
-              props.info?.sessionID
+              props.info?.sessionID ??
+              props.info?.id
+
+            // Log every SSE event with full payload for traceability
+            this.log(`sse:event ${JSON.stringify({ type: event.type, sid: sessionID ?? 'none', timer: this.promptTimer ? 'active' : 'null', props: event.properties })}`)
+
             // Child session event handling
             if (sessionID && sessionID !== this.sessionId) {
               // session.idle for a child = subagent completed
@@ -344,21 +425,35 @@ export class OpenCodeSession extends AgentSession {
               if (part?.messageID && this.userMessageIds.has(part.messageID)) continue
             }
 
+            // session.updated for our session = active work, reset timer
+            // (these normalize to null so they won't reset via the msg path below)
+            if (event.type === 'session.updated' && this.promptTimer) {
+              this.resetPromptTimer('session.updated')
+            }
+
             const msg = normalizeOpenCodeEvent(event)
-            if (msg) this.emit('message', msg)
+            if (msg) {
+              // Reset timeout on real messages (text, tool_call, tool_result, etc.)
+              if (this.promptTimer) this.resetPromptTimer(`msg:${msg.type}`)
+              this.emit('message', msg)
+            }
 
             // session.status busy = opencode started processing a turn
             if (event.type === 'session.status') {
               const { status } = event.properties as { sessionID?: string; status?: { type?: string; attempt?: number; next?: number; message?: string } }
-              if (status?.type === 'busy' && this.status !== 'running') {
-                this.status = 'running'
-                this.emit('message', {
-                  type: 'system',
-                  role: 'system',
-                  content: '',
-                  meta: { subtype: 'init', model: this.modelID, turn: this.promptsSent },
-                  timestamp: Date.now(),
-                } satisfies AgentMessage)
+              if (status?.type === 'busy') {
+                // Busy = agent actively processing — reset timeout
+                if (this.promptTimer) this.resetPromptTimer('session.status:busy')
+                if (this.status !== 'running') {
+                  this.status = 'running'
+                  this.emit('message', {
+                    type: 'system',
+                    role: 'system',
+                    content: '',
+                    meta: { subtype: 'init', model: this.modelID, turn: this.promptsSent },
+                    timestamp: Date.now(),
+                  } satisfies AgentMessage)
+                }
               }
               if (status?.type === 'retry') {
                 this.status = 'retry'
@@ -381,7 +476,9 @@ export class OpenCodeSession extends AgentSession {
             // session.idle = assistant finished one response cycle (turn complete)
             // Session stays alive for follow-up messages — don't break or emit exit
             if (event.type === 'session.idle') {
-              this.log('session:idle')
+              this.log(`session:idle (turns=${this.turnsCompleted + 1}, prompts=${this.promptsSent})`)
+              this.clearPromptTimer('session.idle')
+              this.clearIdleFallbackTimer()
               const sid = (event.properties as { sessionID?: string }).sessionID
               if (sid && sid !== this.sessionId) continue
               this.turnsCompleted++
@@ -413,6 +510,8 @@ export class OpenCodeSession extends AgentSession {
               // Ignore errors caused by our own abort (user hit stop)
               if (this.status === 'stopped') break
               this.log('session:error ' + JSON.stringify(event.properties))
+              this.clearPromptTimer('session.error')
+              this.clearIdleFallbackTimer()
               const rawErr = (event.properties as { error?: { name?: string; message?: string; data?: { message?: string } } | string }).error
               const errMsg = typeof rawErr === 'string'
                 ? rawErr
@@ -445,6 +544,19 @@ export class OpenCodeSession extends AgentSession {
           this.emit('exit')
         } finally {
           this.sseAlive = false
+          this.clearPromptTimer('sse:ended')
+          this.clearIdleFallbackTimer()
+          this.log(`sse:ended (status=${this._status}, turns=${this.turnsCompleted}, prompts=${this.promptsSent})`)
+          if (this.status !== 'stopped' && this.status !== 'errored' && this.status !== 'completed') {
+            this.emit('message', {
+              type: 'error',
+              role: 'system',
+              content: 'SSE stream ended unexpectedly',
+              timestamp: Date.now(),
+            } satisfies AgentMessage)
+            this.status = 'errored'
+            this.emit('exit')
+          }
         }
       }
 
