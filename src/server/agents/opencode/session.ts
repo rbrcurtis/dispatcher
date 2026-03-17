@@ -334,6 +334,20 @@ export class OpenCodeSession extends AgentSession {
 
             // Child session event handling
             if (sessionID && sessionID !== this.sessionId) {
+              // Register child sessions from session.created (carries parentID)
+              if (event.type === 'session.created') {
+                const info = (event.properties as { info?: { parentID?: string; title?: string } }).info
+                if (info?.parentID === this.sessionId && !this.childSessions.has(sessionID)) {
+                  this.childSessions.set(sessionID, { title: info.title ?? sessionID.slice(0, 12), status: 'running' })
+                  this.log(`child:registered ${sessionID} title="${(info.title ?? '').slice(0, 60)}"`)
+                }
+              }
+
+              // Any child session event = parent is still alive waiting for subagent
+              if (this.promptTimer && this.childSessions.has(sessionID)) {
+                this.resetPromptTimer('child:activity')
+              }
+
               // session.idle for a child = subagent completed
               if (event.type === 'session.idle') {
                 const child = this.childSessions.get(sessionID)

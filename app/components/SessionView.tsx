@@ -92,7 +92,7 @@ export const SessionView = observer(function SessionView({
     if (sessionStatus === 'errored') {
       const last = conversation.findLast(m => m.type === 'error');
       if (last?.content) setNotification(last.content);
-    } else if (sessionStatus !== 'errored') {
+    } else {
       setNotification(null);
     }
   }, [sessionStatus, conversation.length]); // eslint-disable-line react-hooks/exhaustive-deps
