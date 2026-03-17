@@ -56,6 +56,7 @@ export class OpenCodeSession extends AgentSession {
     if (val !== this._status) {
       this.log(`status: ${this._status} → ${val}`)
       this._status = val
+      this.emit('statusChange', val)
     }
   }
 
@@ -300,9 +301,7 @@ export class OpenCodeSession extends AgentSession {
             resolveConnected()
           }
 
-          let eventCount = 0
           for await (const event of events.stream) {
-            eventCount++
 
             if (this.abortController?.signal.aborted) break
 

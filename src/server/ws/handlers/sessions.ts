@@ -57,6 +57,14 @@ export async function handleSessionLoad(
         data: payload as import('../../../shared/ws-protocol').AgentStatus,
       })
     })
+
+    // Subscribe to live session status changes (starting→running, etc.)
+    clientSubs.subscribe(ws, `card:${cardId}:session-status`, (payload) => {
+      connections.send(ws, {
+        type: 'agent:status',
+        data: payload as import('../../../shared/ws-protocol').AgentStatus,
+      })
+    })
   } catch (err) {
     console.error(`[session:load] error loading session ${sessionId}:`, err)
     connections.send(ws, { type: 'mutation:error', requestId, error: `Failed to load session: ${err}` })

@@ -67,6 +67,18 @@ export function wireSession(cardId: number, session: AgentSession, bus: MessageB
       turnsCompleted: session.turnsCompleted,
     })
   })
+
+  // Handler: forward session status changes to domain bus
+  session.on('statusChange', () => {
+    bus.publish(`card:${cardId}:session-status`, {
+      cardId,
+      active: session.status === 'running' || session.status === 'starting' || session.status === 'retry',
+      status: session.status,
+      sessionId: session.sessionId,
+      promptsSent: session.promptsSent,
+      turnsCompleted: session.turnsCompleted,
+    })
+  })
 }
 
 // --- Domain bus listeners (registered once at startup) ---
