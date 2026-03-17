@@ -21,6 +21,8 @@ export interface SessionStatusData {
   sessionId: string | null
   promptsSent: number
   turnsCompleted: number
+  contextTokens: number
+  contextWindow: number
 }
 
 async function ensureWorktree(card: Card): Promise<string> {
@@ -213,6 +215,8 @@ class SessionService {
       sessionId: session.sessionId,
       promptsSent: session.promptsSent,
       turnsCompleted: session.turnsCompleted,
+      contextTokens: 0,
+      contextWindow: 200_000,
     }
   }
 

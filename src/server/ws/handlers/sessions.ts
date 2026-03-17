@@ -46,6 +46,8 @@ export async function handleSessionLoad(
           sessionId: card.sessionId,
           promptsSent: card.promptsSent,
           turnsCompleted: card.turnsCompleted,
+          contextTokens: card.contextTokens ?? 0,
+          contextWindow: card.contextWindow ?? 200_000,
         },
       })
     })

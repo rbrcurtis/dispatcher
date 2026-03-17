@@ -30,6 +30,11 @@ export function wireSession(cardId: number, session: AgentSession, bus: MessageB
       if (!card) return
       card.promptsSent = session.promptsSent
       card.turnsCompleted = session.turnsCompleted
+      if (msg.usage) {
+        const u = msg.usage
+        card.contextTokens = (u.inputTokens ?? 0) + (u.cacheWrite ?? 0) + (u.cacheRead ?? 0)
+        if (u.contextWindow) card.contextWindow = u.contextWindow
+      }
       if (card.column === 'running') card.column = 'review'
       card.updatedAt = new Date().toISOString()
       await card.save()
@@ -47,6 +52,7 @@ export function wireSession(cardId: number, session: AgentSession, bus: MessageB
           card.column = 'review'
           card.promptsSent = session.promptsSent
           card.turnsCompleted = session.turnsCompleted
+          // contextTokens/contextWindow already persisted by turn_end handler
           card.updatedAt = new Date().toISOString()
           await card.save()
         }
@@ -65,6 +71,8 @@ export function wireSession(cardId: number, session: AgentSession, bus: MessageB
       sessionId: session.sessionId,
       promptsSent: session.promptsSent,
       turnsCompleted: session.turnsCompleted,
+      contextTokens: 0,
+      contextWindow: 200_000,
     })
   })
 
@@ -77,6 +85,8 @@ export function wireSession(cardId: number, session: AgentSession, bus: MessageB
       sessionId: session.sessionId,
       promptsSent: session.promptsSent,
       turnsCompleted: session.turnsCompleted,
+      contextTokens: 0,
+      contextWindow: 200_000,
     })
   })
 }
