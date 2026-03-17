@@ -284,6 +284,13 @@ export class SessionStore {
       s.sessionId = data.sessionId;
       s.promptsSent = data.promptsSent;
       s.turnsCompleted = data.turnsCompleted;
+      // Seed context data from card when session store has no live data
+      if (s.contextTokens === 0 && data.contextTokens > 0) {
+        s.contextTokens = data.contextTokens;
+      }
+      if (s.contextWindow === 200_000 && data.contextWindow !== 200_000 && data.contextWindow > 0) {
+        s.contextWindow = data.contextWindow;
+      }
       // Clear subagent rows when parent session ends
       if (data.status === 'completed' || data.status === 'stopped' || data.status === 'errored') {
         s.subagents.clear();

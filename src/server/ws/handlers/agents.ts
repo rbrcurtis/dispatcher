@@ -28,7 +28,7 @@ export async function handleAgentSend(
         console.error(`[session:${cardId}] startSession error:`, error)
         connections.send(ws, {
           type: 'agent:status',
-          data: { cardId, active: false, status: 'errored', sessionId: null, promptsSent: 0, turnsCompleted: 0 },
+          data: { cardId, active: false, status: 'errored', sessionId: null, promptsSent: 0, turnsCompleted: 0, contextTokens: 0, contextWindow: 200_000 },
         })
       })
     }
@@ -80,6 +80,8 @@ export async function handleAgentStatus(
           sessionId: card?.sessionId ?? null,
           promptsSent: card?.promptsSent ?? 0,
           turnsCompleted: card?.turnsCompleted ?? 0,
+          contextTokens: card?.contextTokens ?? 0,
+          contextWindow: card?.contextWindow ?? 200_000,
         },
       })
     }

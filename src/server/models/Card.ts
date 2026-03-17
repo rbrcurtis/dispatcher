@@ -61,6 +61,12 @@ export class Card extends BaseEntity {
   @Column({ name: 'turns_completed', type: 'integer', default: 0 })
   turnsCompleted!: number
 
+  @Column({ name: 'context_tokens', type: 'integer', default: 0 })
+  contextTokens!: number
+
+  @Column({ name: 'context_window', type: 'integer', default: 200000 })
+  contextWindow!: number
+
   @Column({ name: 'created_at', type: 'text' })
   createdAt!: string
 

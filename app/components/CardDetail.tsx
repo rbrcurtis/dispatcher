@@ -284,12 +284,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
                   <Textarea
                     value={draft.description}
                     onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-                    onBlur={async () => {
-                      await saveAll();
-                      if (draft.description && (!draft.title || draft.title === 'New Card')) {
-                        cardStore.generateTitle(card.id);
-                      }
-                    }}
+                    onBlur={() => saveAll()}
                     rows={4}
                     placeholder="Add a description..."
                     className="resize-y max-h-40 overflow-y-auto"
@@ -509,7 +504,6 @@ export const NewCardDetail = observer(function NewCardDetail({ column, onCreated
     thinkingLevel: 'high',
   });
   const [creating, setCreating] = useState(false);
-  const [generatingTitle, setGeneratingTitle] = useState(false);
 
   useEffect(() => {
     descRef.current?.focus();
@@ -575,7 +569,7 @@ export const NewCardDetail = observer(function NewCardDetail({ column, onCreated
                 handleSave();
               }
             }}
-            placeholder={generatingTitle ? 'Generating title...' : 'Card title'}
+            placeholder="Card title"
           />
         </div>
 
@@ -585,17 +579,6 @@ export const NewCardDetail = observer(function NewCardDetail({ column, onCreated
             ref={descRef}
             value={draft.description}
             onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-            onBlur={async () => {
-              if (draft.description && (!draft.title || draft.title === 'New Card')) {
-                setGeneratingTitle(true);
-                try {
-                  const title = await cardStore.suggestTitle(draft.description);
-                  if (title) setDraft((d) => ({ ...d, title }));
-                } finally {
-                  setGeneratingTitle(false);
-                }
-              }
-            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || e.shiftKey)) {
                 e.preventDefault();

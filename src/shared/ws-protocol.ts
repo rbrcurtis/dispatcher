@@ -22,6 +22,8 @@ export const cardSchema = z.object({
   thinkingLevel: z.enum(['off', 'low', 'medium', 'high']),
   promptsSent: z.number(),
   turnsCompleted: z.number(),
+  contextTokens: z.number(),
+  contextWindow: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -106,6 +108,8 @@ export const agentStatusSchema = z.object({
   sessionId: z.string().nullable(),
   promptsSent: z.number(),
   turnsCompleted: z.number(),
+  contextTokens: z.number(),
+  contextWindow: z.number(),
 })
 
 export const agentMessageSchema = z.object({
