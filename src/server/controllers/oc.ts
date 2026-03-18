@@ -130,6 +130,32 @@ export function registerAutoStart(bus: MessageBus = messageBus, starter: Session
     if (newColumn !== 'running') return;
     if (oldColumn === 'running') return;
 
+    // Already queued — nothing to do
+    if (card.queuePosition != null) return;
+
+    // Non-worktree cards: check for conflict group before starting
+    if (!card.useWorktree && card.projectId) {
+      const others = await Card.find({
+        where: {
+          column: 'running',
+          projectId: card.projectId,
+          useWorktree: false as unknown as boolean,
+        },
+      });
+      const conflict = others.filter(c => c.id !== card.id);
+      if (conflict.length > 0) {
+        // Assign queue position: max existing + 1
+        const maxPos = conflict.reduce((mx, c) => Math.max(mx, c.queuePosition ?? 0), 0);
+        const fresh = await Card.findOneBy({ id: card.id });
+        if (fresh) {
+          fresh.queuePosition = maxPos + 1;
+          fresh.updatedAt = new Date().toISOString();
+          await fresh.save();
+        }
+        return;
+      }
+    }
+
     // Card with existing session — try to attach if OC session is still alive
     if (card.sessionId) {
       try {
