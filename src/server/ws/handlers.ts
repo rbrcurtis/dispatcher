@@ -182,6 +182,10 @@ export function handleMessage(
       void handleAgentStatus(ws, msg, connections)
       break
 
+    case 'queue:reorder':
+      void handleQueueReorder(ws, msg, connections)
+      break
+
     default: {
       const exhausted = msg as { type: string; requestId?: string }
       connections.send(ws, {
