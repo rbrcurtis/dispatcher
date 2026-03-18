@@ -13,6 +13,8 @@ import {
   AlertDialogTitle,
 } from '~/components/ui/alert-dialog';
 import { Badge } from '~/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover';
+import { Input } from '~/components/ui/input';
 import { useCardStore } from '~/stores/context';
 
 interface CardProps {
@@ -60,12 +62,7 @@ export function Card({ id, title, color, queuePosition, onClick }: CardProps) {
         <div className="flex items-stretch gap-1">
           <p className="text-sm text-foreground truncate flex-1 min-w-0 self-center">{title}</p>
           {queuePosition != null && (
-            <Badge
-              variant="secondary"
-              className="shrink-0 self-center text-xs tabular-nums px-1.5 py-0 h-5 min-w-5 flex items-center justify-center"
-            >
-              {queuePosition}
-            </Badge>
+            <QueueBadge id={id} queuePosition={queuePosition} />
           )}
           <button
             type="button"
@@ -130,6 +127,51 @@ export function Card({ id, title, color, queuePosition, onClick }: CardProps) {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function QueueBadge({ id, queuePosition }: { id: number; queuePosition: number }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(String(queuePosition));
+  const cards = useCardStore();
+
+  function handleSubmit() {
+    const num = parseInt(value, 10);
+    if (!isNaN(num) && num !== queuePosition && num >= 1) {
+      cards.reorderQueue(id, num);
+    }
+    setOpen(false);
+  }
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setValue(String(queuePosition)); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="shrink-0 self-center"
+          onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        >
+          <Badge
+            variant="secondary"
+            className="text-xs tabular-nums px-1.5 py-0 h-5 min-w-5 flex items-center justify-center cursor-pointer hover:bg-secondary/80"
+          >
+            {queuePosition}
+          </Badge>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-28 p-2" align="end">
+        <Input
+          type="number"
+          min={1}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+          onBlur={handleSubmit}
+          className="h-7 text-center"
+          autoFocus
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
