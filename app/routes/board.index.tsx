@@ -50,6 +50,7 @@ interface CardItem {
   turnsCompleted: number;
   createdAt: string;
   updatedAt: string;
+  queuePosition?: number | null;
   color?: string | null;
 }
 

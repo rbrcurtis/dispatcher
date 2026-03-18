@@ -23,6 +23,7 @@ interface CardItem {
   title: string;
   position: number;
   color?: string | null;
+  queuePosition?: number | null;
 }
 
 interface StatusRowProps {
@@ -57,7 +58,7 @@ export function StatusRow({ id, cards, onCardClick, onAddCard }: StatusRowProps)
       >
         <SortableContext items={cards.map(c => c.id)} strategy={horizontalListSortingStrategy}>
           {cards.map(card => (
-            <Card key={card.id} id={card.id} title={card.title} color={card.color} onClick={onCardClick} />
+            <Card key={card.id} id={card.id} title={card.title} color={card.color} queuePosition={card.queuePosition} onClick={onCardClick} />
           ))}
         </SortableContext>
         {cards.length === 0 && (
