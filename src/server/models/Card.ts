@@ -72,6 +72,9 @@ export class Card extends BaseEntity {
 
   @Column({ name: 'updated_at', type: 'text' })
   updatedAt!: string
+
+  @Column({ name: 'queue_position', type: 'integer', nullable: true, default: null })
+  queuePosition!: number | null
 }
 
 @EventSubscriber()
