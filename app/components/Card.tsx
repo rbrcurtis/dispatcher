@@ -12,16 +12,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '~/components/ui/alert-dialog';
+import { Badge } from '~/components/ui/badge';
 import { useCardStore } from '~/stores/context';
 
 interface CardProps {
   id: number;
   title: string;
   color?: string | null;
+  queuePosition?: number | null;
   onClick?: (id: number) => void;
 }
 
-export function Card({ id, title, color, onClick }: CardProps) {
+export function Card({ id, title, color, queuePosition, onClick }: CardProps) {
   const [open, setOpen] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [archivePending, setArchivePending] = useState(false);
@@ -57,6 +59,14 @@ export function Card({ id, title, color, onClick }: CardProps) {
       >
         <div className="flex items-stretch gap-1">
           <p className="text-sm text-foreground truncate flex-1 min-w-0 self-center">{title}</p>
+          {queuePosition != null && (
+            <Badge
+              variant="secondary"
+              className="shrink-0 self-center text-xs tabular-nums px-1.5 py-0 h-5 min-w-5 flex items-center justify-center"
+            >
+              {queuePosition}
+            </Badge>
+          )}
           <button
             type="button"
             className="shrink-0 flex sm:hidden sm:group-hover:flex items-center px-1 -my-2 -mr-3 rounded-r text-muted-foreground/60 hover:text-neon-magenta hover:bg-neon-magenta/10 active:bg-neon-magenta/20"
