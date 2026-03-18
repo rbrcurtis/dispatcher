@@ -26,6 +26,12 @@ export async function handleAgentSend(
         console.error(`[session:${cardId}] sendFollowUp error:`, err);
       });
     } else {
+      // Don't start sessions on queued cards — they wait for their turn
+      const card = await Card.findOneBy({ id: cardId });
+      if (card && card.queuePosition != null) {
+        console.log(`[session:${cardId}] agent:send blocked — card is queued (qP=${card.queuePosition})`);
+        return;
+      }
       sessionService.startSession(cardId, message, files).catch((err) => {
         const error = err instanceof Error ? err.message : String(err);
         console.error(`[session:${cardId}] startSession error:`, error);
