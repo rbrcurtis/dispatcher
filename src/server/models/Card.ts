@@ -3,7 +3,6 @@ import {
   EventSubscriber,
   type EntitySubscriberInterface,
   type InsertEvent, type UpdateEvent, type RemoveEvent,
-  BeforeUpdateEvent,
 } from 'typeorm'
 import { Expose } from 'class-transformer'
 import { messageBus } from '../bus'
@@ -79,7 +78,7 @@ export class Card extends BaseEntity {
 export class CardSubscriber implements EntitySubscriberInterface<Card> {
   listenTo() { return Card }
 
-  beforeUpdate(event: BeforeUpdateEvent<Card>) {
+  beforeUpdate(event: UpdateEvent<Card>) {
     const card = event.entity as Card
     const prev = event.databaseEntity as Card
     if (prev?.sessionId && card.sessionId !== prev.sessionId) {
