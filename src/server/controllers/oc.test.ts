@@ -304,6 +304,10 @@ describe('OC controller: registerAutoStart queue assignment', () => {
     const { registerAutoStart } = await import('./oc');
     registerAutoStart(bus, { startSession: startMock, attachSession: vi.fn().mockResolvedValue(false) });
 
+    // Mock sessionService.startSession so processQueue can call it
+    const { sessionService } = await import('../services/session');
+    const sessionStartMock = vi.spyOn(sessionService, 'startSession').mockResolvedValue(undefined);
+
     const proj = Project.create({
       name: 'Solo proj',
       path: '/tmp/s',
@@ -328,7 +332,9 @@ describe('OC controller: registerAutoStart queue assignment', () => {
 
     await card.reload();
     expect(card.queuePosition).toBeNull();
-    expect(startMock).toHaveBeenCalledWith(card.id, undefined);
+    // processQueue calls sessionService.startSession, not the mock starter
+    expect(sessionStartMock).toHaveBeenCalledWith(card.id);
+    sessionStartMock.mockRestore();
   });
 
   it('does not queue worktree cards even when conflict group exists', async () => {
@@ -375,46 +381,69 @@ describe('OC controller: registerAutoStart queue assignment', () => {
     expect(startMock).toHaveBeenCalledWith(wtCard.id, undefined);
   });
 
-  it('skips already-queued cards (queuePosition not null)', async () => {
+  it('does not start queued cards when active session exists', async () => {
     const bus = new MessageBus();
     const startMock = vi.fn().mockResolvedValue(undefined);
     const { registerAutoStart } = await import('./oc');
     registerAutoStart(bus, { startSession: startMock, attachSession: vi.fn().mockResolvedValue(false) });
 
-    const card = Card.create({
-      title: 'Pre-queued',
+    // Mock sessionManager to report an active session on the active card
+    const { sessionManager } = await import('../agents/manager');
+    const getMock = vi.spyOn(sessionManager, 'get');
+
+    const proj = Project.create({
+      name: 'Queued proj',
+      path: '/tmp/qp',
+      createdAt: new Date().toISOString(),
+    } as Partial<Project> as Project);
+    await proj.save();
+
+    const active = Card.create({
+      title: 'Active card',
       description: 'Test',
       column: 'running',
       position: 0,
-      queuePosition: 2,
+      projectId: proj.id,
+      useWorktree: false,
+      queuePosition: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
-    await card.save();
+    await active.save();
 
-    bus.publish('board:changed', { card, oldColumn: 'ready', newColumn: 'running' });
+    const queued = Card.create({
+      title: 'Queued card',
+      description: 'Test',
+      column: 'running',
+      position: 1,
+      projectId: proj.id,
+      useWorktree: false,
+      queuePosition: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await queued.save();
+
+    getMock.mockImplementation((cardId: number) => {
+      if (cardId === active.id) return { status: 'running' } as ReturnType<typeof sessionManager.get>;
+      return undefined;
+    });
+
+    bus.publish('board:changed', { card: queued, oldColumn: 'ready', newColumn: 'running' });
     await new Promise((r) => setTimeout(r, 50));
 
+    // processQueue sees active session, doesn't start anything new
     expect(startMock).not.toHaveBeenCalled();
+    getMock.mockRestore();
   });
 });
 
-describe('OC controller: registerQueueManager', () => {
-  it('starts session when queue:promoted fires', async () => {
-    const bus = new MessageBus();
-    const startMock = vi.fn().mockResolvedValue(undefined);
-    const { registerQueueManager } = await import('./oc');
-    registerQueueManager(bus, { startSession: startMock });
+describe('processQueue: queue processing on column exit', () => {
+  it('promotes next card and renumbers when active card leaves running', async () => {
+    // Mock sessionService.startSession so processQueue can call it
+    const { sessionService } = await import('../services/session');
+    const sessionStartMock = vi.spyOn(sessionService, 'startSession').mockResolvedValue(undefined);
 
-    bus.publish('queue:promoted', { cardId: 42 });
-    await new Promise((r) => setTimeout(r, 50));
-
-    expect(startMock).toHaveBeenCalledWith(42);
-  });
-});
-
-describe('Card model: queue recalc on column exit', () => {
-  it('promotes next card and decrements queue when active card leaves running', async () => {
     const proj = Project.create({
       name: 'Promo proj',
       path: '/tmp/promo',
@@ -461,20 +490,28 @@ describe('Card model: queue recalc on column exit', () => {
     });
     await third.save();
 
-    // Active card leaves running — triggers recalc
+    // Active card leaves running — call processQueue directly
     active.column = 'review';
     active.updatedAt = new Date().toISOString();
     await active.save();
-    await new Promise((r) => setTimeout(r, 100));
+
+    const { processQueue } = await import('../services/queue-gate');
+    await processQueue(proj.id);
 
     await next.reload();
     await third.reload();
     expect(active.queuePosition).toBeNull();
     expect(next.queuePosition).toBeNull(); // promoted
     expect(third.queuePosition).toBe(1); // decremented from 2
+    expect(sessionStartMock).toHaveBeenCalledWith(next.id);
+    sessionStartMock.mockRestore();
   });
 
   it('renumbers queue when a queued card leaves running', async () => {
+    // Mock sessionManager to report active session on the active card
+    const { sessionManager } = await import('../agents/manager');
+    const getMock = vi.spyOn(sessionManager, 'get');
+
     const proj = Project.create({
       name: 'Renum proj',
       path: '/tmp/renum',
@@ -521,16 +558,25 @@ describe('Card model: queue recalc on column exit', () => {
     });
     await remaining.save();
 
-    // Queued card leaves running — triggers renumbering
+    // Mock active card as having a running session
+    getMock.mockImplementation((cardId: number) => {
+      if (cardId === active.id) return { status: 'running' } as ReturnType<typeof sessionManager.get>;
+      return undefined;
+    });
+
+    // Queued card leaves running — call processQueue directly to renumber
     removed.column = 'ready';
     removed.updatedAt = new Date().toISOString();
     await removed.save();
-    await new Promise((r) => setTimeout(r, 100));
+
+    const { processQueue } = await import('../services/queue-gate');
+    await processQueue(proj.id);
 
     await remaining.reload();
     await removed.reload();
     expect(remaining.queuePosition).toBe(1); // decremented from 2
     expect(removed.queuePosition).toBeNull(); // cleared by beforeUpdate hook
+    getMock.mockRestore();
   });
 
   it('clears queuePosition when card moves to any non-running column', async () => {

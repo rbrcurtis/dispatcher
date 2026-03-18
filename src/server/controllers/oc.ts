@@ -2,6 +2,7 @@ import { Card } from '../models/Card';
 import { Project } from '../models/Project';
 import { messageBus, type MessageBus } from '../bus';
 import type { AgentSession, AgentMessage } from '../agents/types';
+import { processQueue } from '../services/queue-gate';
 
 const DISPLAY_TYPES = new Set([
   'user',
@@ -150,66 +151,56 @@ export function registerAutoStart(bus: MessageBus = messageBus, starter: Session
       newColumn: string | null;
     };
     if (!card) return;
-    if (newColumn !== 'running') return;
-    if (oldColumn === 'running') return;
 
-    // Already queued — nothing to do
-    if (card.queuePosition != null) return;
-
-    // Non-worktree cards: check for conflict group before starting
-    if (!card.useWorktree && card.projectId) {
-      const others = await Card.find({
-        where: {
-          column: 'running',
-          projectId: card.projectId,
-          useWorktree: false as unknown as boolean,
-        },
-      });
-      const conflict = others.filter((c) => c.id !== card.id);
-      if (conflict.length > 0) {
-        // Assign queue position: max existing + 1
-        const maxPos = conflict.reduce((mx, c) => Math.max(mx, c.queuePosition ?? 0), 0);
-        const fresh = await Card.findOneBy({ id: card.id });
-        if (fresh) {
-          fresh.queuePosition = maxPos + 1;
-          fresh.updatedAt = new Date().toISOString();
-          await fresh.save();
-        }
+    // Card entered running
+    if (newColumn === 'running' && oldColumn !== 'running') {
+      // Non-worktree cards: delegate to queue processing
+      if (!card.useWorktree && card.projectId) {
+        console.log(
+          `[oc:auto-start] card #${card.id} entered running ` +
+            `(non-worktree, project=${card.projectId}, qP=${card.queuePosition})`,
+        );
+        processQueue(card.projectId).catch((err) => {
+          console.error(`[oc:auto-start] processQueue failed for card #${card.id}:`, err);
+        });
         return;
       }
+
+      // Worktree cards or no project: start directly
+      console.log(
+        `[oc:auto-start] card #${card.id} entered running ` +
+          `(worktree=${card.useWorktree}, project=${card.projectId})`,
+      );
+      if (card.sessionId) {
+        try {
+          const attached = await starter.attachSession(card.id);
+          if (attached) {
+            console.log(`[oc:auto-start] card #${card.id}: attached to live session (sid=${card.sessionId})`);
+            return;
+          }
+          console.log(`[oc:auto-start] card #${card.id}: session not active (sid=${card.sessionId}), will resume`);
+        } catch (err) {
+          console.error(`[oc:auto-start] card #${card.id}: attach failed:`, err);
+        }
+      }
+      starter.startSession(card.id, undefined).catch((err) => {
+        console.error(`[oc:auto-start] card #${card.id}: startSession failed:`, err);
+      });
+      return;
     }
 
-    // Card with existing session — try to attach if OC session is still alive
-    if (card.sessionId) {
-      try {
-        const attached = await starter.attachSession(card.id);
-        if (attached) {
-          console.log(`[oc:auto-start] attached to live session for card ${card.id}`);
-          return;
-        }
-        // Session not alive — fall through to startSession (resume with existing sessionId)
-        console.log(`[oc:auto-start] session not active for card ${card.id}, will resume`);
-      } catch (err) {
-        console.error(`[oc:auto-start] attach failed for card ${card.id}:`, err);
+    // Card left running — trigger queue processing for remaining cards
+    if (oldColumn === 'running' && newColumn !== 'running') {
+      if (!card.useWorktree && card.projectId) {
+        console.log(
+          `[oc:auto-start] card #${card.id} left running → ${newColumn} ` +
+            `(project=${card.projectId}), processing queue`,
+        );
+        processQueue(card.projectId).catch((err) => {
+          console.error(`[oc:auto-start] processQueue failed for project ${card.projectId}:`, err);
+        });
       }
     }
-
-    starter.startSession(card.id, undefined).catch((err) => {
-      console.error(`[oc:auto-start] failed for card ${card.id}:`, err);
-    });
-  });
-}
-
-interface QueueStarter {
-  startSession(cardId: number): Promise<void>;
-}
-
-export function registerQueueManager(bus: MessageBus = messageBus, starter: QueueStarter): void {
-  bus.subscribe('queue:promoted', async (payload) => {
-    const { cardId } = payload as { cardId: number };
-    starter.startSession(cardId).catch((err) => {
-      console.error(`[oc:queue] failed to start promoted card ${cardId}:`, err);
-    });
   });
 }
 
