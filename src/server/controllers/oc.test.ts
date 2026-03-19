@@ -278,6 +278,14 @@ describe('OC controller: registerAutoStart queue assignment', () => {
     });
     await active.save();
 
+    // Register a fake session so processQueue sees the active card as running
+    const { sessionManager } = await import('../agents/manager');
+    const fakeActiveSession = fakeSession();
+    fakeActiveSession.status = 'running';
+    vi.spyOn(sessionManager, 'get').mockImplementation((cardId: number) =>
+      cardId === active.id ? (fakeActiveSession as never) : undefined,
+    );
+
     const queued = Card.create({
       title: 'Queued',
       description: 'Test',
@@ -296,6 +304,8 @@ describe('OC controller: registerAutoStart queue assignment', () => {
     await queued.reload();
     expect(queued.queuePosition).toBe(1);
     expect(startMock).not.toHaveBeenCalled();
+
+    vi.restoreAllMocks();
   });
 
   it('does not queue non-worktree card when no conflict exists', async () => {

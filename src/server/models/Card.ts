@@ -141,7 +141,7 @@ export class CardSubscriber implements EntitySubscriberInterface<Card> {
 
     messageBus.publish(`card:${card.id}:updated`, card);
 
-    if (prev?.column !== card.column) {
+    if (prev?.column !== card.column || prev?.queuePosition !== card.queuePosition) {
       messageBus.publish('board:changed', {
         card,
         oldColumn: prev?.column ?? null,
