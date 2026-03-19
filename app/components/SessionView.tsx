@@ -48,10 +48,12 @@ export const SessionView = observer(function SessionView({
   const contentRef = useRef<HTMLDivElement>(null);
   const prevConvLen = useRef(0);
   const nearBottomRef = useRef(true); // tracks if user is near bottom (for auto-scroll gating)
+  const isStreamingRef = useRef(false); // mirrors isStreaming for ResizeObserver access
   const [compacted, setCompacted] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   const isStreaming = sessionActive || isStarting;
+  isStreamingRef.current = isStreaming;
 
   // Load history / set up bus subscriptions on mount and when sessionId becomes available.
   // Called without sessionId on first render to register card-level bus subscriptions
@@ -121,11 +123,10 @@ export const SessionView = observer(function SessionView({
 
       if (rafId) cancelAnimationFrame(rafId);
 
-      // Use nearBottomRef (updated by scroll listener) — reflects user's
-      // position relative to the CURRENT bottom, not the old one.
-      // This prevents expanding a collapsible tool block from yanking
-      // the user to the bottom when they've scrolled up.
-      if (initialScroll || nearBottomRef.current) {
+      // Only auto-scroll when the session is actively streaming
+      // (new messages or streaming text/tool output), not when the user
+      // toggles a collapsible tool block which resizes content in-place.
+      if (initialScroll || (isStreamingRef.current && nearBottomRef.current)) {
         initialScroll = false;
         rafId = requestAnimationFrame(() => {
           bottomRef.current?.scrollIntoView({ behavior: 'instant' });
