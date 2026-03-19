@@ -374,6 +374,7 @@ export class OpenCodeSession extends AgentSession {
 
   private subscribeToEvents(): Promise<void> {
     const sdk = this.client as unknown as SdkClient;
+    this.abortController?.abort(); // tear down previous SSE stream before reconnecting
     this.abortController = new AbortController();
     this.sseAlive = true;
 
