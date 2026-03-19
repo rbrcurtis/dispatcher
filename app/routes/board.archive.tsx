@@ -53,9 +53,9 @@ const ArchiveBoard = observer(function ArchiveBoard() {
 
   // Read archive cards from store (reactive)
   const storeCards = useMemo((): CardItem[] => {
-    return cardStore.cardsByColumn('archive').map(c => ({
+    return cardStore.cardsByColumn('archive').map((c) => ({
       ...c,
-      color: c.projectId ? colorMap[c.projectId] ?? null : null,
+      color: c.projectId ? (colorMap[c.projectId] ?? null) : null,
     }));
   }, [cardStore.cards, colorMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -68,7 +68,7 @@ const ArchiveBoard = observer(function ArchiveBoard() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   function handleDragStart(e: DragStartEvent) {
@@ -96,7 +96,8 @@ const ArchiveBoard = observer(function ArchiveBoard() {
       const finalIdx = reordered.findIndex((c) => c.id === active.id);
       const pos = calcPosition(others, finalIdx);
 
-      cardStore.updateCard({ id: active.id as number, column: 'archive', position: pos })
+      cardStore
+        .updateCard({ id: active.id as number, column: 'archive', position: pos })
         .finally(() => setDragOverride(null));
     } else {
       setDragOverride(null);
@@ -114,9 +115,7 @@ const ArchiveBoard = observer(function ArchiveBoard() {
     if (!search) return cards;
     const q = search.toLowerCase();
     return cards.filter(
-      (c) =>
-        c.title.toLowerCase().includes(q) ||
-        (c.description && c.description.toLowerCase().includes(q))
+      (c) => c.title.toLowerCase().includes(q) || (c.description && c.description.toLowerCase().includes(q)),
     );
   }, [cards, search]);
 
@@ -134,21 +133,15 @@ const ArchiveBoard = observer(function ArchiveBoard() {
       onDragCancel={handleDragCancel}
     >
       <div className="flex flex-col gap-2 p-4">
-        <StatusRow
-          id="archive"
-          cards={filteredCards}
-          onCardClick={selectCard}
-          onAddCard={() => startNewCard('archive')}
-        />
+        <StatusRow id="archive" cards={filteredCards} onCardClick={selectCard} />
       </div>
-      {mounted && createPortal(
-        <DragOverlay>
-          {activeCard ? (
-            <CardOverlay title={activeCard.title} color={activeCard.color} />
-          ) : null}
-        </DragOverlay>,
-        document.body
-      )}
+      {mounted &&
+        createPortal(
+          <DragOverlay>
+            {activeCard ? <CardOverlay title={activeCard.title} color={activeCard.color} /> : null}
+          </DragOverlay>,
+          document.body,
+        )}
     </DndContext>
   );
 });

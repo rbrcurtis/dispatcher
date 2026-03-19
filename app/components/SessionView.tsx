@@ -7,14 +7,14 @@ import { Textarea } from '~/components/ui/textarea';
 import { Badge } from '~/components/ui/badge';
 import { ContextGauge } from './ContextGauge';
 import { SubagentFeed } from './SubagentFeed';
-import { useSessionStore, useCardStore } from '~/stores/context';
+import { useSessionStore, useCardStore, useConfigStore, useProjectStore } from '~/stores/context';
 import type { FileRef } from '../../src/shared/ws-protocol';
 
 type Props = {
   cardId: number;
   sessionId?: string | null;
   accentColor?: string | null;
-  model: 'sonnet' | 'opus' | 'auto';
+  model: string;
   thinkingLevel: 'off' | 'low' | 'medium' | 'high';
 };
 
@@ -27,6 +27,12 @@ export const SessionView = observer(function SessionView({
 }: Props) {
   const sessionStore = useSessionStore();
   const cardStore = useCardStore();
+  const configStore = useConfigStore();
+  const projectStore = useProjectStore();
+
+  const card = cardStore.getCard(cardId);
+  const cardProject = card?.projectId != null ? projectStore.getProject(card.projectId) : undefined;
+  const providerModels = configStore.getModels(cardProject?.providerID ?? 'anthropic');
 
   const session = sessionStore.getSession(cardId);
   const conversation = session?.conversation ?? [];
@@ -53,13 +59,13 @@ export const SessionView = observer(function SessionView({
 
   const isStreaming = sessionActive || isStarting;
 
-  // Load history / set up bus subscriptions on mount and when sessionId becomes available.
+  // Load history / set up bus subscriptions on mount and when card or sessionId changes.
+  // Always reloads — loadHistory() clears conversation first so history is always fresh.
   // Called without sessionId on first render to register card-level bus subscriptions
   // immediately (avoiding the race where messages arrive before sessionId is known).
   // Called again once sessionId is available to actually load history.
   useEffect(() => {
     const sid = sessionStoreId ?? sessionId;
-    if (sid && session?.historyLoaded) return; // history already loaded — nothing to do
     sessionStore.loadHistory(cardId, sid ?? undefined);
   }, [cardId, sessionStoreId, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -210,10 +216,7 @@ export const SessionView = observer(function SessionView({
     setIsStarting(false);
   }
 
-  async function handleUpdateCard(data: {
-    model?: 'sonnet' | 'opus' | 'auto';
-    thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
-  }) {
+  async function handleUpdateCard(data: { model?: string; thinkingLevel?: 'off' | 'low' | 'medium' | 'high' }) {
     await cardStore.updateCard({ id: cardId, ...data });
   }
 
@@ -265,12 +268,14 @@ export const SessionView = observer(function SessionView({
           )}
           <select
             value={model}
-            onChange={(e) => handleUpdateCard({ model: e.target.value as 'sonnet' | 'opus' | 'auto' })}
+            onChange={(e) => handleUpdateCard({ model: e.target.value })}
             className="text-[11px] bg-transparent text-muted-foreground border-none outline-none cursor-pointer hover:text-foreground"
           >
-            <option value="auto">Auto</option>
-            <option value="sonnet">Sonnet</option>
-            <option value="opus">Opus</option>
+            {providerModels.map(([alias, cfg]) => (
+              <option key={alias} value={alias}>
+                {cfg.label}
+              </option>
+            ))}
           </select>
           <select
             value={thinkingLevel}

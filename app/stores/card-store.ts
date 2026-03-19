@@ -26,8 +26,7 @@ export class CardStore {
 
   cardsByColumn(col: string): Card[] {
     const items = Array.from(this.cards.values()).filter((c) => c.column === col);
-    if (col === 'archive') return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    return items.sort((a, b) => a.position - b.position);
+    return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   getCard(id: number): Card | undefined {
@@ -68,7 +67,7 @@ export class CardStore {
     description?: string | null;
     column?: Column | null;
     projectId?: number | null;
-    model?: 'sonnet' | 'opus' | 'auto';
+    model?: string;
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
     useWorktree?: boolean;
     sourceBranch?: 'main' | 'dev' | null;
@@ -99,7 +98,7 @@ export class CardStore {
     column?: Column;
     position?: number;
     projectId?: number | null;
-    model?: 'sonnet' | 'opus' | 'auto';
+    model?: string;
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
     useWorktree?: boolean;
     sourceBranch?: 'main' | 'dev' | null;

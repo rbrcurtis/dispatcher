@@ -383,6 +383,7 @@ export class SessionStore {
 
   async loadHistory(cardId: number, sessionId?: string | null): Promise<void> {
     this.subscribedCards.add(cardId);
+    this.clearConversation(cardId);
     const requestId = uuid();
     await ws().mutate({
       type: 'session:load',
@@ -395,6 +396,7 @@ export class SessionStore {
 
   async resubscribeAll(): Promise<void> {
     for (const cardId of this.subscribedCards) {
+      this.clearConversation(cardId);
       const requestId = uuid();
       ws()
         .mutate({

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
 import { X, ChevronDown, ChevronRight, Copy, Check, GitBranch } from 'lucide-react';
-import { useCardStore, useProjectStore, useSessionStore } from '~/stores/context';
+import { useCardStore, useConfigStore, useProjectStore, useSessionStore } from '~/stores/context';
 import { SessionView } from './SessionView';
 import { InlineEdit } from './InlineEdit';
 import { Input } from '~/components/ui/input';
@@ -44,12 +44,13 @@ type Draft = {
   projectId: number | null;
   useWorktree: boolean;
   sourceBranch: string | null;
-  model: 'sonnet' | 'opus' | 'auto';
+  model: string;
   thinkingLevel: 'off' | 'low' | 'medium' | 'high';
 };
 
 export const CardDetail = observer(function CardDetail({ cardId, onClose }: Props) {
   const cardStore = useCardStore();
+  const configStore = useConfigStore();
   const projectStore = useProjectStore();
   const sessionStore = useSessionStore();
 
@@ -192,7 +193,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
   const sessionActive = sessionStore.getSession(cardId)?.active ?? false;
   const hasSession = !!card.sessionId || col === 'running';
   const showSession = hasSession;
-  const projectLocked = !!card.projectId;
+  const projectLocked = !!card.sessionId;
 
   async function saveField(field: 'title' | 'description', val: string) {
     await cardStore.updateCard({ id: card!.id, [field]: val });
@@ -255,7 +256,50 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
           >
             <GitBranch className={cn('size-3.5', !card.useWorktree && 'text-dim')} />
           </span>
-          {cardProject && (
+          {!projectLocked ? (
+            <Select
+              value={card.projectId != null ? String(card.projectId) : '__none__'}
+              onValueChange={(val) => {
+                const pid = val === '__none__' ? null : Number(val);
+                const proj = pid != null ? projectStore.getProject(pid) : undefined;
+                const updates = {
+                  projectId: pid,
+                  useWorktree: proj?.isGitRepo ? (proj.defaultWorktree ?? false) : false,
+                  sourceBranch: null as string | null,
+                  model: proj?.defaultModel ?? draft.model,
+                  thinkingLevel: proj?.defaultThinkingLevel ?? draft.thinkingLevel,
+                };
+                setDraft((d) => ({ ...d, ...updates }));
+                void saveAll(updates);
+              }}
+            >
+              <SelectTrigger className="w-auto border-none shadow-none px-0 h-auto gap-1 shrink-0">
+                <Badge
+                  variant="secondary"
+                  className="text-xs cursor-pointer"
+                  style={cardProject?.color ? { borderLeft: `3px solid var(--${cardProject.color})` } : undefined}
+                >
+                  <SelectValue placeholder="Project" />
+                </Badge>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {projectStore.all.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    <span className="flex items-center gap-2">
+                      {p.color && (
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: `var(--${p.color})` }}
+                        />
+                      )}
+                      {p.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : cardProject ? (
             <Badge
               variant="secondary"
               className="text-xs shrink-0"
@@ -263,7 +307,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
             >
               {cardProject.name}
             </Badge>
-          )}
+          ) : null}
           <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={onClose}>
             <X className="size-4" />
           </Button>
@@ -312,49 +356,6 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
                   />
                 )}
               </div>
-
-              {/* Project — only editable if not yet saved */}
-              {!projectLocked && (
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Project</label>
-                  <Select
-                    value={draft.projectId != null ? String(draft.projectId) : '__none__'}
-                    onValueChange={(val) => {
-                      const pid = val === '__none__' ? null : Number(val);
-                      const proj = pid != null ? projectStore.getProject(pid) : undefined;
-                      const updates = {
-                        projectId: pid,
-                        useWorktree: proj?.isGitRepo ? (proj.defaultWorktree ?? false) : false,
-                        sourceBranch: null as string | null,
-                        model: proj?.defaultModel ?? draft.model,
-                        thinkingLevel: proj?.defaultThinkingLevel ?? draft.thinkingLevel,
-                      };
-                      setDraft((d) => ({ ...d, ...updates }));
-                      void saveAll(updates);
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">None</SelectItem>
-                      {projectStore.all.map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>
-                          <span className="flex items-center gap-2">
-                            {p.color && (
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: `var(--${p.color})` }}
-                              />
-                            )}
-                            {p.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
 
               {/* Use Worktree */}
               {!!selectedProject?.isGitRepo && (
@@ -405,17 +406,19 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose }: Prop
                     <Select
                       value={draft.model}
                       onValueChange={(val) => {
-                        setDraft((d) => ({ ...d, model: val as 'sonnet' | 'opus' | 'auto' }));
-                        void saveAll({ model: val as 'sonnet' | 'opus' | 'auto' });
+                        setDraft((d) => ({ ...d, model: val }));
+                        void saveAll({ model: val });
                       }}
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="auto">Auto</SelectItem>
-                        <SelectItem value="sonnet">Sonnet</SelectItem>
-                        <SelectItem value="opus">Opus</SelectItem>
+                        {configStore.getModels(cardProject?.providerID ?? 'anthropic').map(([alias, cfg]) => (
+                          <SelectItem key={alias} value={alias}>
+                            {cfg.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -519,6 +522,7 @@ type NewCardProps = {
 
 export const NewCardDetail = observer(function NewCardDetail({ column, onCreated, onClose }: NewCardProps) {
   const cardStore = useCardStore();
+  const configStore = useConfigStore();
   const projectStore = useProjectStore();
   const descRef = useRef<HTMLTextAreaElement>(null);
 
@@ -705,17 +709,16 @@ export const NewCardDetail = observer(function NewCardDetail({ column, onCreated
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">Model</label>
-            <Select
-              value={draft.model}
-              onValueChange={(val) => setDraft((d) => ({ ...d, model: val as 'sonnet' | 'opus' | 'auto' }))}
-            >
+            <Select value={draft.model} onValueChange={(val) => setDraft((d) => ({ ...d, model: val }))}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="auto">Auto</SelectItem>
-                <SelectItem value="sonnet">Sonnet</SelectItem>
-                <SelectItem value="opus">Opus</SelectItem>
+                {configStore.getModels(selectedProject?.providerID ?? 'anthropic').map(([alias, cfg]) => (
+                  <SelectItem key={alias} value={alias}>
+                    {cfg.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
