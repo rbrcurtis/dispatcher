@@ -104,7 +104,10 @@ All mutations produce a new `SlotState[]` via an updater pattern.
 All slot state and actions live in a single custom hook:
 
 ```ts
-function useSlots(columnCount: number): {
+function useSlots(
+  columnCount: number,
+  cards: Card[],
+): {
   slots: SlotState[];
   resolvedCards: Map<number, number>;
   pinSlot: (index: number, projectId: number) => void;
