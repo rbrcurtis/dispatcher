@@ -80,18 +80,19 @@ All mutations produce a new `SlotState[]` via an updater pattern.
 
 - If card is already visible in any slot → flash that slot, no state change
 - If there is a `pinned` slot for the card's project with no current display (resolver returned nothing and no override) → set override: `{ type: 'pinned', projectId, cardId }`
-- Otherwise → place in first `empty` non-hotseat slot; fall back to slot 0 as `{ type: 'manual', cardId }`
+- Otherwise → place in first slot where `slot.type === 'empty'` and index ≥ 1; fall back to slot 0 as `{ type: 'manual', cardId }`. A `pinned` slot with no current card is **not** a valid landing target here — it is already managed by the resolver.
 
 **`dropCard(slotIndex, cardId, cardProjectId)`** (all drag sources — HTML5 and dnd-kit)
 
 - Remove card from any other slot it currently occupies
 - If target slot is `pinned` and `cardProjectId === slot.projectId` → set override: `{ type: 'pinned', projectId, cardId }`
-- Otherwise → set to `{ type: 'manual', cardId }` (pin cleared)
+- Otherwise (including `cardProjectId === null`) → set to `{ type: 'manual', cardId }` (pin cleared)
 - Source slot: if it was `pinned`, leave as `{ type: 'pinned', projectId }` with no override so the resolver refills it
+- `cardProjectId` is always looked up from the card store at drop time — both HTML5 slot-header drags and dnd-kit kanban drags have a `cardId` to resolve against the store
 
 **`onCardCreated(cardId, projectId)`** (new card saved)
 
-- If any slot is `pinned` to that project → do nothing; resolver re-runs naturally via observer
+- If any slot is `pinned` to that project → do nothing; resolver re-runs naturally via observer. Slot 0 is left untouched — the new card form is controlled by `newCardColumn` state (not slot state), so when the form closes, slot 0 naturally stays or becomes `{ type: 'empty' }` without any explicit slot mutation. The new card surfaces in the pinned slot only if the resolver qualifies it.
 - Otherwise → set slot 0 to `{ type: 'manual', cardId }`
 
 **Eviction** (card deleted)
@@ -123,6 +124,7 @@ Internals:
 - Eviction runs on every render (hook lives inside `observer()`, so MobX card store changes trigger re-renders automatically)
 - `resolvePinnedCards` called directly in hook body each render — no reaction, no effect
 - `resolvedCards` map returned alongside `slots` so `ColumnSlot` can derive displayed card without calling the resolver itself
+- **Flash detection:** a `useRef` holds the previous `resolvedCards` map. A dependency-free `useEffect` (runs after every render) compares the current map against the previous: if any slot's resolved card changed from absent/null to a card ID, `setFlashSlot(i)` is called for that slot. The ref is then updated to the current map. Flash is also triggered directly inside `selectCard` and `dropCard` when a card is placed. This mirrors the eviction pattern (runs every render, guarded by a changed check).
 
 ## `board.tsx` Changes
 
@@ -153,7 +155,21 @@ const { slots, resolvedCards, pinSlot, closeSlot, selectCard, dropCard, onCardCr
 
 **`NewCardDetail` `onCreated` callback:** calls `onCardCreated(id, projectId)` instead of always placing in slot 0.
 
-**Outlet context:** loses `updateSlots`, gains `dropCard` and `onCardCreated`.
+**Outlet context** — before vs after:
+
+```ts
+// Before
+{
+  (search, projectFilter, selectedCardId, selectCard, startNewCard, updateSlots, columnSlots);
+}
+
+// After
+{
+  (search, projectFilter, selectedCardId, selectCard, startNewCard, dropCard, onCardCreated, slots);
+}
+```
+
+`selectCard` signature is unchanged. `selectedCardId` remains the displayed card for slot 0 (derived as `resolvedCards.get(0) ?? (slots[0].type !== 'empty' ? slots[0].cardId : null) ?? null`) for backwards compatibility. `columnSlots` is replaced by `slots: SlotState[]` — consumers (e.g. `board.index.tsx`) that previously checked `columnSlots` to avoid duplicate placements should use `slots` instead, reading `slot.type` and `slot.cardId` as needed.
 
 ## Files
 
@@ -184,3 +200,6 @@ const { slots, resolvedCards, pinSlot, closeSlot, selectCard, dropCard, onCardCr
 - R12: new card with and without pinned slot
 - Eviction on deleted card
 - Column count grow/shrink
+- Flash fires when resolver places a new card in a pinned slot
+- Flash fires on `selectCard` and `dropCard` placement
+- Flash does not fire when a slot empties
