@@ -221,6 +221,103 @@ describe('resolvePinnedCards', () => {
     expect(resolvePinnedCards(slots, cards).size).toBe(0);
   });
 
+  // ─── Sticky behavior ────────────────────────────────────────────────────────
+
+  it('keeps a currently-displayed review card in its slot when a new review card enters', () => {
+    // Slot 1 was showing card 2 (review). Card 1 (older review) enters the pool.
+    // Without sticky: card 1 takes slot 1 (oldest), card 2 moves to slot 2.
+    // With sticky: card 2 stays in slot 1, card 1 goes to slot 2.
+    const slots: SlotState[] = [
+      { type: 'empty' },
+      { type: 'pinned', projectId: 10 },
+      { type: 'pinned', projectId: 10 },
+    ];
+    const cards = [
+      makeCard({ id: 1, projectId: 10, column: 'review', createdAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'review', createdAt: '2026-03-20T02:00:00Z' }),
+    ];
+    const prev = new Map([[1, 2]]); // slot 1 was showing card 2
+    const result = resolvePinnedCards(slots, cards, prev);
+    expect(result.get(1)).toBe(2); // sticky — stays
+    expect(result.get(2)).toBe(1); // new card fills remaining slot
+  });
+
+  it('unsticks a card when it leaves review/running', () => {
+    const slots: SlotState[] = [
+      { type: 'empty' },
+      { type: 'pinned', projectId: 10 },
+      { type: 'pinned', projectId: 10 },
+    ];
+    // Card 2 moved to done — no longer eligible
+    const cards = [
+      makeCard({ id: 1, projectId: 10, column: 'review', createdAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'done' }),
+    ];
+    const prev = new Map([[1, 2]]); // slot 1 was showing card 2
+    const result = resolvePinnedCards(slots, cards, prev);
+    expect(result.get(1)).toBe(1); // card 2 gone, card 1 fills slot 1
+    expect(result.has(2)).toBe(false); // no second card
+  });
+
+  it('unsticks a card that was moved to the exclusion set (manual slot)', () => {
+    const slots: SlotState[] = [
+      { type: 'manual', cardId: 2 },
+      { type: 'pinned', projectId: 10 },
+    ];
+    const cards = [
+      makeCard({ id: 1, projectId: 10, column: 'review', createdAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'review', createdAt: '2026-03-20T02:00:00Z' }),
+    ];
+    const prev = new Map([[1, 2]]); // slot 1 was showing card 2
+    const result = resolvePinnedCards(slots, cards, prev);
+    expect(result.get(1)).toBe(1); // card 2 excluded (manual), card 1 fills
+  });
+
+  it('sticks multiple cards across multiple slots for same project', () => {
+    const slots: SlotState[] = [
+      { type: 'empty' },
+      { type: 'pinned', projectId: 10 },
+      { type: 'pinned', projectId: 10 },
+      { type: 'pinned', projectId: 10 },
+    ];
+    const cards = [
+      makeCard({ id: 1, projectId: 10, column: 'review', createdAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'review', createdAt: '2026-03-20T02:00:00Z' }),
+      makeCard({ id: 3, projectId: 10, column: 'review', createdAt: '2026-03-20T03:00:00Z' }),
+    ];
+    // Slots 1 and 2 were showing cards 3 and 1 respectively (reversed from rank order)
+    const prev = new Map([
+      [1, 3],
+      [2, 1],
+    ]);
+    const result = resolvePinnedCards(slots, cards, prev);
+    expect(result.get(1)).toBe(3); // sticky
+    expect(result.get(2)).toBe(1); // sticky
+    expect(result.get(3)).toBe(2); // remaining card fills remaining slot
+  });
+
+  it('works with no previous results (fresh start)', () => {
+    const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 10 }];
+    const cards = [makeCard({ id: 1, projectId: 10, column: 'review', createdAt: '2026-03-20T01:00:00Z' })];
+    // No previous — should fall back to ranked distribution
+    const result = resolvePinnedCards(slots, cards, new Map());
+    expect(result.get(1)).toBe(1);
+  });
+
+  it('ignores previous results for slots that are no longer pinned to the same project', () => {
+    const slots: SlotState[] = [
+      { type: 'empty' },
+      { type: 'pinned', projectId: 20 }, // was pinned to 10, now 20
+    ];
+    const cards = [
+      makeCard({ id: 1, projectId: 10, column: 'review', createdAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 20, column: 'review', createdAt: '2026-03-20T01:00:00Z' }),
+    ];
+    const prev = new Map([[1, 1]]); // slot 1 was showing card 1 (project 10)
+    const result = resolvePinnedCards(slots, cards, prev);
+    expect(result.get(1)).toBe(2); // card 1 is for project 10, slot is now project 20
+  });
+
   it('uses independent exclusion sets per project', () => {
     const slots: SlotState[] = [
       { type: 'manual', cardId: 1 },

@@ -254,11 +254,11 @@ export function useSlots(columnCount: number, cards: Card[]): UseSlotsResult {
     });
   });
 
-  // Compute resolver result fresh each render
-  const resolvedCards = resolvePinnedCards(slots, cards);
-
-  // Flash detection for resolver-driven card appearances
+  // Flash detection + sticky resolver: track previous result
   const prevResolvedRef = useRef<Map<number, number>>(new Map());
+
+  // Compute resolver result fresh each render, passing previous for sticky behavior
+  const resolvedCards = resolvePinnedCards(slots, cards, prevResolvedRef.current);
   useEffect(() => {
     for (const [i, cardId] of resolvedCards) {
       if (prevResolvedRef.current.get(i) !== cardId) {

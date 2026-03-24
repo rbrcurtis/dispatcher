@@ -13,18 +13,30 @@ export type SlotState =
  *
  * Cards already visible in any slot (manual or pinned override) are excluded.
  *
+ * Sticky behavior: if a slot was previously displaying a card that is still
+ * eligible (same project, still review/running, not excluded), it stays in
+ * that slot. New cards fill remaining slots from the ranked pool.
+ *
  * Priority per project:
  *   1. Review cards — oldest createdAt first
  *   2. Active running (queuePosition == null) — newest updatedAt first
  *   3. Queued running — queuePosition ascending, newest updatedAt as tiebreak
  */
-export function resolvePinnedCards(slots: SlotState[], cards: Card[]): Map<number, number> {
+export function resolvePinnedCards(
+  slots: SlotState[],
+  cards: Card[],
+  currentDisplayed: Map<number, number> = new Map(),
+): Map<number, number> {
   // Build exclusion set: cards already stored in any slot
   const usedCardIds = new Set<number>();
   for (const slot of slots) {
     if (slot.type === 'manual') usedCardIds.add(slot.cardId);
     else if (slot.type === 'pinned' && slot.cardId != null) usedCardIds.add(slot.cardId);
   }
+
+  // Index cards by id for fast lookup
+  const cardById = new Map<number, Card>();
+  for (const c of cards) cardById.set(c.id, c);
 
   // Group pinned slot indices by projectId
   const projectSlots = new Map<number, number[]>();
@@ -43,13 +55,39 @@ export function resolvePinnedCards(slots: SlotState[], cards: Card[]): Map<numbe
       (c) => c.projectId === projectId && (c.column === 'review' || c.column === 'running') && !usedCardIds.has(c.id),
     );
 
-    const review = eligible.filter((c) => c.column === 'review').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    // Sticky pass: keep currently-displayed cards that are still eligible
+    const stickyCardIds = new Set<number>();
+    const unfilledSlots: number[] = [];
+    for (const idx of slotIndices) {
+      const prevCardId = currentDisplayed.get(idx);
+      if (prevCardId != null) {
+        const card = cardById.get(prevCardId);
+        if (
+          card &&
+          card.projectId === projectId &&
+          (card.column === 'review' || card.column === 'running') &&
+          !usedCardIds.has(card.id)
+        ) {
+          result.set(idx, prevCardId);
+          stickyCardIds.add(prevCardId);
+          continue;
+        }
+      }
+      unfilledSlots.push(idx);
+    }
 
-    const activeRunning = eligible
+    // Rank remaining eligible cards (excluding sticky ones)
+    const remaining = eligible.filter((c) => !stickyCardIds.has(c.id));
+
+    const review = remaining
+      .filter((c) => c.column === 'review')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+    const activeRunning = remaining
       .filter((c) => c.column === 'running' && c.queuePosition == null)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-    const queuedRunning = eligible
+    const queuedRunning = remaining
       .filter((c) => c.column === 'running' && c.queuePosition != null)
       .sort((a, b) => {
         const qDiff = (a.queuePosition ?? 0) - (b.queuePosition ?? 0);
@@ -58,8 +96,9 @@ export function resolvePinnedCards(slots: SlotState[], cards: Card[]): Map<numbe
 
     const ranked = [...review, ...activeRunning, ...queuedRunning];
 
-    for (let i = 0; i < slotIndices.length; i++) {
-      if (i < ranked.length) result.set(slotIndices[i], ranked[i].id);
+    // Distribute remaining ranked cards to unfilled slots
+    for (let i = 0; i < unfilledSlots.length; i++) {
+      if (i < ranked.length) result.set(unfilledSlots[i], ranked[i].id);
     }
   }
 
