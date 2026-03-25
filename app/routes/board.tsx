@@ -474,6 +474,7 @@ const ColumnSlot = observer(function ColumnSlot({
   const projectStore = useProjectStore();
   const [dragOver, setDragOver] = useState(false);
   const [draftColor, setDraftColor] = useState<string | null>(null);
+  const [creatingCard, setCreatingCard] = useState(false);
 
   function handleDragOver(e: React.DragEvent) {
     // Accept drops from column headers and kanban cards
@@ -494,6 +495,7 @@ const ColumnSlot = observer(function ColumnSlot({
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
+    setCreatingCard(false);
     const slotData = e.dataTransfer.getData('application/x-card-slot');
     if (slotData) {
       const { cardId: srcCardId, slotIndex: srcIdx } = JSON.parse(slotData) as { cardId: number; slotIndex: number };
@@ -550,6 +552,21 @@ const ColumnSlot = observer(function ColumnSlot({
             }}
             onColorChange={setDraftColor}
           />
+        ) : creatingCard && pinProjectId != null ? (
+          <NewCardDetail
+            column="running"
+            initialProjectId={pinProjectId}
+            onCreated={(id, projectId) => {
+              setCreatingCard(false);
+              setDraftColor(null);
+              onCardCreated(id, projectId);
+            }}
+            onClose={() => {
+              setCreatingCard(false);
+              setDraftColor(null);
+            }}
+            onColorChange={setDraftColor}
+          />
         ) : cardId != null ? (
           <CardDetail
             cardId={cardId}
@@ -583,6 +600,9 @@ const ColumnSlot = observer(function ColumnSlot({
                   </Badge>
                 ) : null;
               })()}
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => setCreatingCard(true)}>
+                <Plus className="size-4" />
+              </Button>
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => closeSlot(index)}>
                 <X className="size-4" />
               </Button>
