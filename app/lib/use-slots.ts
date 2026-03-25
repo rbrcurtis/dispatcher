@@ -243,6 +243,7 @@ export function useSlots(columnCount: number, cards: Card[]): UseSlotsResult {
 
   // Eviction — runs every render (hook lives inside observer(), MobX drives re-renders)
   // Skip when cards haven't loaded yet to avoid wiping stored slots on first render
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally no deps, runs every render
   useEffect(() => {
     if (!cardsSeenRef.current) return;
     const existingIds = new Set(cards.map((c) => c.id));
@@ -259,6 +260,7 @@ export function useSlots(columnCount: number, cards: Card[]): UseSlotsResult {
 
   // Compute resolver result fresh each render, passing previous for sticky behavior
   const resolvedCards = resolvePinnedCards(slots, cards, prevResolvedRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally no deps, runs every render to detect flash
   useEffect(() => {
     for (const [i, cardId] of resolvedCards) {
       if (prevResolvedRef.current.get(i) !== cardId) {
