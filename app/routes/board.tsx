@@ -457,7 +457,7 @@ type ColumnSlotProps = {
 
 const ColumnSlot = observer(function ColumnSlot({
   index,
-  slot,
+  slot: _slot,
   cardId,
   borderColor,
   flash,
@@ -584,6 +584,9 @@ const ColumnSlot = observer(function ColumnSlot({
         ) : pinProjectId != null ? (
           <div className="flex flex-col flex-1">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => setCreatingCard(true)}>
+                <Plus className="size-4" />
+              </Button>
               <span className="flex-1" />
               {(() => {
                 const p = projectStore.getProject(pinProjectId);
@@ -600,9 +603,6 @@ const ColumnSlot = observer(function ColumnSlot({
                   </Badge>
                 ) : null;
               })()}
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => setCreatingCard(true)}>
-                <Plus className="size-4" />
-              </Button>
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => closeSlot(index)}>
                 <X className="size-4" />
               </Button>
