@@ -211,9 +211,14 @@ describe('applyCloseSlot', () => {
     expect(applyCloseSlot(slots, 0)[0]).toEqual({ type: 'empty' });
   });
 
-  it('sets a pinned slot (including override) to empty', () => {
+  it('preserves pin when closing a pinned slot with an override', () => {
     const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 10, cardId: 5 }];
-    expect(applyCloseSlot(slots, 1)[1]).toEqual({ type: 'empty' });
+    expect(applyCloseSlot(slots, 1)[1]).toEqual({ type: 'pinned', projectId: 10 });
+  });
+
+  it('preserves pin when closing a pinned slot without an override', () => {
+    const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 10 }];
+    expect(applyCloseSlot(slots, 1)[1]).toEqual({ type: 'pinned', projectId: 10 });
   });
 
   it('sets an already-empty slot to empty without error', () => {

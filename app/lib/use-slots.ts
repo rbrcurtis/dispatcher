@@ -136,7 +136,12 @@ export function applyDropCard(
 
 export function applyCloseSlot(slots: SlotState[], index: number): SlotState[] {
   const next = [...slots];
-  next[index] = { type: 'empty' };
+  const slot = slots[index];
+  if (slot.type === 'pinned') {
+    next[index] = { type: 'pinned', projectId: slot.projectId };
+  } else {
+    next[index] = { type: 'empty' };
+  }
   return next;
 }
 
