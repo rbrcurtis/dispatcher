@@ -103,25 +103,30 @@ export class CardSubscriber implements EntitySubscriberInterface<Card> {
       );
     }
 
-    // Card entering running as non-worktree: check for conflicts, assign queue position
+    // Card entering running as non-worktree on a git repo: check for conflicts, assign queue position.
+    // Non-git-repo projects don't need serialization — no shared working directory to protect.
     if (prev?.column !== 'running' && card.column === 'running' && !card.useWorktree && card.projectId) {
-      const others = await Card.find({
-        where: {
-          column: 'running',
-          projectId: card.projectId,
-          useWorktree: false as unknown as boolean,
-        },
-      });
-      const conflict = others.filter((c) => c.id !== card.id);
-      if (conflict.length > 0) {
-        const maxPos = conflict.reduce((mx, c) => Math.max(mx, c.queuePosition ?? 0), 0);
-        card.queuePosition = maxPos + 1;
-        console.log(
-          `[card:${card.id}] entering running with ${conflict.length} conflict(s), ` +
-            `assigned queuePosition=${card.queuePosition}`,
-        );
-      } else {
-        console.log(`[card:${card.id}] entering running, no conflicts in project ${card.projectId}`);
+      const { Project } = await import('./Project');
+      const proj = await Project.findOneBy({ id: card.projectId });
+      if (proj?.isGitRepo) {
+        const others = await Card.find({
+          where: {
+            column: 'running',
+            projectId: card.projectId,
+            useWorktree: false as unknown as boolean,
+          },
+        });
+        const conflict = others.filter((c) => c.id !== card.id);
+        if (conflict.length > 0) {
+          const maxPos = conflict.reduce((mx, c) => Math.max(mx, c.queuePosition ?? 0), 0);
+          card.queuePosition = maxPos + 1;
+          console.log(
+            `[card:${card.id}] entering running with ${conflict.length} conflict(s), ` +
+              `assigned queuePosition=${card.queuePosition}`,
+          );
+        } else {
+          console.log(`[card:${card.id}] entering running, no conflicts in project ${card.projectId}`);
+        }
       }
     }
 

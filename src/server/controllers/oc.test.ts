@@ -394,6 +394,55 @@ describe('OC controller: registerAutoStart queue assignment', () => {
     expect(startMock).toHaveBeenCalledWith(wtCard.id, undefined);
   });
 
+  it('does not queue non-worktree card on non-git-repo project', async () => {
+    const bus = new MessageBus();
+    const startMock = vi.fn().mockResolvedValue(undefined);
+    const { registerAutoStart } = await import('./oc');
+    registerAutoStart(bus, { startSession: startMock, attachSession: vi.fn().mockResolvedValue(false) });
+
+    const proj = Project.create({
+      name: 'Non-git proj',
+      path: '/tmp/ng',
+      isGitRepo: false,
+      createdAt: new Date().toISOString(),
+    } as Partial<Project> as Project);
+    await proj.save();
+
+    const first = Card.create({
+      title: 'First non-git',
+      description: 'Test',
+      column: 'running',
+      position: 0,
+      projectId: proj.id,
+      useWorktree: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await first.save();
+
+    const second = Card.create({
+      title: 'Second non-git',
+      description: 'Test',
+      column: 'running',
+      position: 1,
+      projectId: proj.id,
+      useWorktree: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await second.save();
+
+    expect(second.queuePosition).toBeNull();
+
+    bus.publish('board:changed', { card: second, oldColumn: 'ready', newColumn: 'running' });
+    await new Promise((r) => setTimeout(r, 50));
+
+    await second.reload();
+    expect(second.queuePosition).toBeNull();
+    // Non-git projects start directly, not through queue
+    expect(startMock).toHaveBeenCalledWith(second.id, undefined);
+  });
+
   it('does not start queued cards when active session exists', async () => {
     const bus = new MessageBus();
     const startMock = vi.fn().mockResolvedValue(undefined);

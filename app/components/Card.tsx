@@ -58,6 +58,7 @@ export function Card({ id, title, color, queuePosition, onClick }: CardProps) {
           <button
             type="button"
             className="shrink-0 flex sm:invisible sm:group-hover:visible items-center px-1 -my-2 -mr-3 rounded-r text-muted-foreground/60 hover:text-neon-magenta hover:bg-neon-magenta/10 active:bg-neon-magenta/20"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               setOpen(true);
