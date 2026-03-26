@@ -261,6 +261,7 @@ describe('OC controller: registerAutoStart queue assignment', () => {
     const proj = Project.create({
       name: 'Queue proj',
       path: '/tmp/q',
+      isGitRepo: true,
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -321,6 +322,7 @@ describe('OC controller: registerAutoStart queue assignment', () => {
     const proj = Project.create({
       name: 'Solo proj',
       path: '/tmp/s',
+      isGitRepo: true,
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -356,6 +358,7 @@ describe('OC controller: registerAutoStart queue assignment', () => {
     const proj = Project.create({
       name: 'WT proj',
       path: '/tmp/wt',
+      isGitRepo: true,
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -404,6 +407,7 @@ describe('OC controller: registerAutoStart queue assignment', () => {
     const proj = Project.create({
       name: 'Queued proj',
       path: '/tmp/qp',
+      isGitRepo: true,
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -457,6 +461,7 @@ describe('processQueue: queue processing on column exit', () => {
     const proj = Project.create({
       name: 'Promo proj',
       path: '/tmp/promo',
+      isGitRepo: true,
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -525,6 +530,7 @@ describe('processQueue: queue processing on column exit', () => {
     const proj = Project.create({
       name: 'Renum proj',
       path: '/tmp/renum',
+      isGitRepo: true,
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();

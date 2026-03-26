@@ -174,16 +174,19 @@ export function registerAutoStart(bus: MessageBus = messageBus, starter: Session
 
     // Card entered running
     if (newColumn === 'running' && oldColumn !== 'running') {
-      // Non-worktree cards: delegate to queue processing
+      // Non-worktree cards on git repos: delegate to queue processing
       if (!card.useWorktree && card.projectId) {
-        console.log(
-          `[oc:auto-start] card #${card.id} entered running ` +
-            `(non-worktree, project=${card.projectId}, qP=${card.queuePosition})`,
-        );
-        processQueue(card.projectId).catch((err) => {
-          console.error(`[oc:auto-start] processQueue failed for card #${card.id}:`, err);
-        });
-        return;
+        const proj = await Project.findOneBy({ id: card.projectId });
+        if (proj?.isGitRepo) {
+          console.log(
+            `[oc:auto-start] card #${card.id} entered running ` +
+              `(non-worktree, project=${card.projectId}, qP=${card.queuePosition})`,
+          );
+          processQueue(card.projectId).catch((err) => {
+            console.error(`[oc:auto-start] processQueue failed for card #${card.id}:`, err);
+          });
+          return;
+        }
       }
 
       // Worktree cards or no project: start directly
@@ -209,16 +212,19 @@ export function registerAutoStart(bus: MessageBus = messageBus, starter: Session
       return;
     }
 
-    // Card left running — trigger queue processing for remaining cards
+    // Card left running — trigger queue processing for remaining cards (git repos only)
     if (oldColumn === 'running' && newColumn !== 'running') {
       if (!card.useWorktree && card.projectId) {
-        console.log(
-          `[oc:auto-start] card #${card.id} left running → ${newColumn} ` +
-            `(project=${card.projectId}), processing queue`,
-        );
-        processQueue(card.projectId).catch((err) => {
-          console.error(`[oc:auto-start] processQueue failed for project ${card.projectId}:`, err);
-        });
+        const proj = await Project.findOneBy({ id: card.projectId });
+        if (proj?.isGitRepo) {
+          console.log(
+            `[oc:auto-start] card #${card.id} left running → ${newColumn} ` +
+              `(project=${card.projectId}), processing queue`,
+          );
+          processQueue(card.projectId).catch((err) => {
+            console.error(`[oc:auto-start] processQueue failed for project ${card.projectId}:`, err);
+          });
+        }
       }
     }
   });

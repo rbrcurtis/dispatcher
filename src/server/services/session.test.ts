@@ -23,7 +23,7 @@ afterAll(async () => {
 describe('SessionService.getStatus', () => {
   it('returns null when no session is active', async () => {
     const { sessionService } = await import('./session')
-    expect(sessionService.getStatus(99999)).toBeNull()
+    expect(await sessionService.getStatus(99999)).toBeNull()
   })
 })
 

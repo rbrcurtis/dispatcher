@@ -190,6 +190,8 @@ export function wsServerPlugin(): Plugin {
             const { removeWorktree, worktreeExists } = await import('../worktree');
             registerAutoStart(undefined, sessionService);
             registerWorktreeCleanup(undefined, { removeWorktree, worktreeExists });
+            const { startSessionReaper } = await import('../services/session-reaper');
+            startSessionReaper();
             console.log('[oc] controller listeners registered');
 
             openCodeServer
