@@ -2,6 +2,7 @@ import { existsSync } from 'fs';
 import { readdir, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { Project, DEFAULT_COLORS } from '../models/Project';
+import { getDefaultProviderID } from '../config/providers';
 
 export interface DirEntry {
   name: string;
@@ -24,6 +25,11 @@ class ProjectService {
     if (!data.color) {
       const used = (await Project.find({ select: { color: true } })).map((p) => p.color);
       data.color = DEFAULT_COLORS.find((c) => !used.includes(c)) ?? DEFAULT_COLORS[0];
+    }
+
+    // Default providerID to config-driven default
+    if (!data.providerID) {
+      data.providerID = getDefaultProviderID();
     }
 
     const proj = Project.create({

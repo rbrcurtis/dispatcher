@@ -2,7 +2,7 @@ import { ILike } from 'typeorm';
 import { Card } from '../models/Card';
 import type { Column } from '../../shared/ws-protocol';
 import { Project } from '../models/Project';
-import { getModelConfig } from '../config/providers';
+import { getDefaultProviderID, getModelConfig } from '../config/providers';
 
 export interface PageResult {
   cards: Card[];
@@ -47,11 +47,11 @@ class CardService {
     const position = (maxCard?.position ?? -1) + 1;
 
     // Inherit defaults from project if projectId set
-    let providerID = 'anthropic';
+    let providerID = getDefaultProviderID();
     if (data.projectId) {
       const proj = await Project.findOneBy({ id: data.projectId });
       if (proj) {
-        providerID = proj.providerID ?? 'anthropic';
+        providerID = proj.providerID ?? getDefaultProviderID();
         data.model = data.model ?? proj.defaultModel;
         data.thinkingLevel = data.thinkingLevel ?? proj.defaultThinkingLevel;
         data.useWorktree = data.useWorktree ?? proj.defaultWorktree;
@@ -81,7 +81,7 @@ class CardService {
     // Update contextWindow when model changes
     if (data.model) {
       const proj = card.projectId ? await Project.findOneBy({ id: card.projectId }) : null;
-      const providerID = proj?.providerID ?? 'anthropic';
+      const providerID = proj?.providerID ?? getDefaultProviderID();
       const modelCfg = getModelConfig(providerID, data.model);
       if (modelCfg) data.contextWindow = modelCfg.contextWindow;
     }

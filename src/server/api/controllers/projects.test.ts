@@ -22,6 +22,7 @@ beforeAll(async () => {
   proj1 = Project.create({
     name: 'Alpha Project',
     path: '/tmp/alpha',
+    providerID: 'anthropic',
     createdAt: now,
   })
   await proj1.save()
@@ -29,6 +30,7 @@ beforeAll(async () => {
   proj2 = Project.create({
     name: 'Beta Project',
     path: '/tmp/beta',
+    providerID: 'anthropic',
     createdAt: now,
   })
   await proj2.save()

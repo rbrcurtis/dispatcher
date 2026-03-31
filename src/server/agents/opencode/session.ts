@@ -54,7 +54,8 @@ export class OpenCodeSession extends AgentSession {
   constructor(
     private client: unknown,
     private cwd: string,
-    private providerID: string,
+    private providerID: string,       // Orchestrel provider ID — for resolveModel()
+    private ocProviderID: string,     // OpenCode provider ID — for sdk.session.prompt()
     private modelID: string,
     private variant: string | undefined,
     private resumeSessionId?: string,
@@ -261,7 +262,7 @@ export class OpenCodeSession extends AgentSession {
         await sdk.session.prompt({
           sessionID: this.sessionId!,
           parts: [{ type: 'text', text: content }],
-          model: { providerID: this.providerID, modelID: this.modelID },
+          model: { providerID: this.ocProviderID, modelID: this.modelID },
           ...(this.variant !== undefined ? { variant: this.variant } : {}),
           directory: this.cwd,
           tools: { question: false },

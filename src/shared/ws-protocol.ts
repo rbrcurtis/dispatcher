@@ -93,6 +93,7 @@ export const modelConfigSchema = z.object({
 
 export const providerConfigSchema = z.object({
   label: z.string(),
+  ocProviderID: z.string().optional(),
   models: z.record(z.string(), modelConfigSchema),
 });
 

@@ -27,6 +27,7 @@ describe('Project entity', () => {
     const proj = ds.getRepository(Project).create({
       name: 'Test project',
       path: '/tmp/test',
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     })
     await proj.save()
@@ -43,6 +44,7 @@ describe('Project entity', () => {
     const proj = ds.getRepository(Project).create({
       name: 'Delete me',
       path: '/tmp/delete',
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     })
     await proj.save()

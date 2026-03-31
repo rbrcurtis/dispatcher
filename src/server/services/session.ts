@@ -7,6 +7,7 @@ import type { AgentMessage, SessionStatus } from '../agents/types';
 import type { FileRef } from '../../shared/ws-protocol';
 import { copyOpencodeConfig, createWorktree, runSetupCommands, slugify, worktreeExists } from '../worktree';
 import { wireSession } from '../controllers/oc';
+import { getDefaultProviderID } from '../config/providers';
 
 export interface SessionStatusData {
   cardId: number;
@@ -119,13 +120,13 @@ class SessionService {
       card.worktreePath ?? (card.projectId ? (await Project.findOneByOrFail({ id: card.projectId })).path : null);
     if (!cwd) throw new Error(`No working directory for card ${cardId}`);
 
-    let providerID = 'anthropic';
+    let providerID = getDefaultProviderID();
     let projectName: string | undefined;
     if (card.projectId) {
       const proj = await Project.findOneBy({ id: card.projectId });
       if (proj) {
         projectName = proj.name.toLowerCase();
-        providerID = proj.providerID ?? 'anthropic';
+        providerID = proj.providerID ?? getDefaultProviderID();
       }
     }
 
@@ -250,14 +251,14 @@ class SessionService {
     const cwd = await ensureWorktree(card);
     console.log(`[session:${cardId}] launchSession: worktree ready at ${cwd}`);
 
-    let providerID = 'anthropic';
+    let providerID = getDefaultProviderID();
     let projectName: string | undefined;
 
     if (card.projectId) {
       const proj = await Project.findOneBy({ id: card.projectId });
       if (proj) {
         projectName = proj.name.toLowerCase();
-        providerID = proj.providerID ?? 'anthropic';
+        providerID = proj.providerID ?? getDefaultProviderID();
       }
     }
 
@@ -331,13 +332,13 @@ class SessionService {
 
     console.log(`[session:${cardId}] attachSession: session ${card.sessionId} is busy, attaching`);
 
-    let providerID = 'anthropic';
+    let providerID = getDefaultProviderID();
     let projectName: string | undefined;
     if (card.projectId) {
       const proj = await Project.findOneBy({ id: card.projectId });
       if (proj) {
         projectName = proj.name.toLowerCase();
-        providerID = proj.providerID ?? 'anthropic';
+        providerID = proj.providerID ?? getDefaultProviderID();
       }
     }
 

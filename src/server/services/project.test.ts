@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { DataSource } from 'typeorm'
-import { Project, ProjectSubscriber, NEON_COLORS } from '../models/Project'
+import { Project, ProjectSubscriber, DEFAULT_COLORS } from '../models/Project'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -26,8 +26,8 @@ describe('ProjectService', () => {
     const { projectService } = await import('./project')
     const p1 = await projectService.createProject({ name: 'P1', path: '/tmp' })
     const p2 = await projectService.createProject({ name: 'P2', path: '/tmp' })
-    expect(p1.color).toBe(NEON_COLORS[0])
-    expect(p2.color).toBe(NEON_COLORS[1])
+    expect(p1.color).toBe(DEFAULT_COLORS[0])
+    expect(p2.color).toBe(DEFAULT_COLORS[1])
   })
 
   it('createProject detects isGitRepo from path', async () => {

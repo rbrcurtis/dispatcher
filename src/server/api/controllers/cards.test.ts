@@ -20,6 +20,7 @@ beforeAll(async () => {
   const proj = Project.create({
     name: 'Test Project',
     path: '/tmp/test',
+    providerID: 'anthropic',
     createdAt: new Date().toISOString(),
   })
   await proj.save()

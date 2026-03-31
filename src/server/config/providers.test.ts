@@ -19,10 +19,10 @@ vi.mock('fs', () => ({
 
 // Re-import the module fresh in each test so the `cached` variable is reset.
 async function importModule() {
-  const { loadProviders, getProvidersForClient, getModelConfig, getDefaultModel } = await import(
+  const { loadProviders, getProvidersForClient, getModelConfig, getDefaultModel, getOcProviderID, getDefaultProviderID } = await import(
     './providers'
   );
-  return { loadProviders, getProvidersForClient, getModelConfig, getDefaultModel };
+  return { loadProviders, getProvidersForClient, getModelConfig, getDefaultModel, getOcProviderID, getDefaultProviderID };
 }
 
 beforeEach(async () => {
@@ -107,5 +107,50 @@ describe('getDefaultModel()', () => {
   it("falls back to 'sonnet' for an unknown provider", async () => {
     const { getDefaultModel } = await importModule();
     expect(getDefaultModel('unknown-provider')).toBe('sonnet');
+  });
+});
+
+describe('getOcProviderID()', () => {
+  it('returns ocProviderID when set', async () => {
+    const fs = await import('fs');
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({
+        providers: {
+          anthropic: {
+            label: 'Anthropic',
+            ocProviderID: 'opencode-proxy',
+            models: {
+              sonnet: { label: 'Sonnet', modelID: 'claude-sonnet-4-6', contextWindow: 200000 },
+            },
+          },
+        },
+      }),
+    );
+    const { getOcProviderID } = await importModule();
+    expect(getOcProviderID('anthropic')).toBe('opencode-proxy');
+  });
+
+  it('falls back to provider key when ocProviderID not set', async () => {
+    const { getOcProviderID } = await importModule();
+    expect(getOcProviderID('anthropic')).toBe('anthropic');
+  });
+
+  it('falls back to providerID for unknown providers', async () => {
+    const { getOcProviderID } = await importModule();
+    expect(getOcProviderID('unknown')).toBe('unknown');
+  });
+});
+
+describe('getDefaultProviderID()', () => {
+  it('returns the first provider key from config', async () => {
+    const { getDefaultProviderID } = await importModule();
+    expect(getDefaultProviderID()).toBe('anthropic');
+  });
+
+  it('throws when no providers are configured', async () => {
+    const fs = await import('fs');
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ providers: {} }));
+    const { getDefaultProviderID } = await importModule();
+    expect(() => getDefaultProviderID()).toThrow('No providers configured');
   });
 });

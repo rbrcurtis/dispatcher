@@ -63,7 +63,7 @@ export class Project extends BaseEntity {
   @Column({ name: 'default_thinking_level', type: 'text', default: 'high' })
   defaultThinkingLevel!: string;
 
-  @Column({ name: 'provider_id', type: 'text', default: 'anthropic' })
+  @Column({ name: 'provider_id', type: 'text' })
   providerID!: string;
 
   @Column({ type: 'text', default: '#00f0ff' })

@@ -262,6 +262,7 @@ describe('OC controller: registerAutoStart queue assignment', () => {
       name: 'Queue proj',
       path: '/tmp/q',
       isGitRepo: true,
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -323,6 +324,7 @@ describe('OC controller: registerAutoStart queue assignment', () => {
       name: 'Solo proj',
       path: '/tmp/s',
       isGitRepo: true,
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -359,6 +361,7 @@ describe('OC controller: registerAutoStart queue assignment', () => {
       name: 'WT proj',
       path: '/tmp/wt',
       isGitRepo: true,
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -404,6 +407,7 @@ describe('OC controller: registerAutoStart queue assignment', () => {
       name: 'Non-git proj',
       path: '/tmp/ng',
       isGitRepo: false,
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -457,6 +461,7 @@ describe('OC controller: registerAutoStart queue assignment', () => {
       name: 'Queued proj',
       path: '/tmp/qp',
       isGitRepo: true,
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -511,6 +516,7 @@ describe('processQueue: queue processing on column exit', () => {
       name: 'Promo proj',
       path: '/tmp/promo',
       isGitRepo: true,
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -580,6 +586,7 @@ describe('processQueue: queue processing on column exit', () => {
       name: 'Renum proj',
       path: '/tmp/renum',
       isGitRepo: true,
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
@@ -676,6 +683,7 @@ describe('OC controller: registerWorktreeCleanup', () => {
     const proj = Project.create({
       name: 'WT Project',
       path: '/tmp/wt-proj',
+      providerID: 'anthropic',
       createdAt: new Date().toISOString(),
     } as Partial<Project> as Project);
     await proj.save();
