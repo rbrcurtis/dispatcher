@@ -19,7 +19,6 @@ import { useStore, useCardStore, useProjectStore } from '~/stores/context';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Board' },
-  { to: '/chat', label: 'Chat' },
   { to: '/archive', label: 'Archive' },
 ] as const;
 

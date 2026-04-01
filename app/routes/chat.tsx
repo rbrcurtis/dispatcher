@@ -84,9 +84,6 @@ const ChatLayout = observer(function ChatLayout() {
         </Button>
         <h1 className="text-lg font-bold text-foreground">Orchestrel</h1>
         <nav className="flex items-center gap-1 ml-2">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/">Board</Link>
-          </Button>
           <Button variant={location.pathname.startsWith('/chat') ? 'default' : 'ghost'} size="sm" asChild>
             <Link to="/chat">Chat</Link>
           </Button>
