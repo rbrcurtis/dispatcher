@@ -67,9 +67,9 @@ Projects are required on cards — no orphan/null-project cards to handle.
 
 Real-time updates are scoped per-connection:
 
-- `card:updated`, `card:deleted` — only sent to users who can see that card's project
+- `card:created`, `card:updated`, `card:deleted` — only sent to users who can see that card's project
 - `project:updated`, `project:deleted` — only sent to users assigned to that project (+ admins)
-- When project user assignments change: newly-added users get a sync of the project + its cards; removed users get a project/card removal
+- When project user assignments change: newly-added users get a fresh `sync` with updated visible data; removed users get a fresh `sync` with reduced data (simpler than synthesizing individual removal events)
 
 ### Card creation
 
@@ -122,4 +122,4 @@ No changes. REST routes remain unprotected — they're a narrow integration surf
 
 ## Environment Variables
 
-- `ADMIN_EMAILS` — comma-separated list of admin email addresses (e.g., `wednesday@gmail.com`). Checked on every WS connection to sync user roles.
+- `ADMIN_EMAILS` — comma-separated list of admin email addresses (e.g., `wednesday@gmail.com`). Checked on every WS connection to sync user roles. If unset or empty, all remote users default to `user` role (local/LAN access remains admin).
