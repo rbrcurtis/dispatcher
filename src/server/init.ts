@@ -99,8 +99,10 @@ export async function initBackend(): Promise<{
   const connections = new ConnectionManager();
   const wss = new WebSocketServer({ noServer: true });
 
-  wss.on('connection', (ws) => {
-    connections.add(ws);
+  wss.on('connection', (ws, req) => {
+    const identity = (req as Record<string, unknown>).__userIdentity as import('./services/user').UserIdentity;
+    connections.add(ws, identity);
+    console.log(`[ws] connection: ${identity.email} (${identity.role})`);
     ws.on('message', (raw) => {
       try {
         const data = JSON.parse(raw.toString());
@@ -119,12 +121,15 @@ export async function initBackend(): Promise<{
     httpServer.on('upgrade', async (req: IncomingMessage, socket: Duplex, head: Buffer) => {
       if (req.url !== '/ws') return;
 
-      const valid = await validateCfAccess(req);
-      if (!valid) {
+      const auth = await validateCfAccess(req);
+      if (!auth.valid) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
+      const { userService, LOCAL_ADMIN } = await import('./services/user');
+      const identity = auth.isLocal || !auth.email ? LOCAL_ADMIN : await userService.findOrCreate(auth.email);
+      (req as Record<string, unknown>).__userIdentity = identity;
 
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit('connection', ws, req);

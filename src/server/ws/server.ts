@@ -18,8 +18,10 @@ function createWsServer(
 ) {
   const wss = new WebSocketServer({ noServer: true });
 
-  wss.on('connection', (ws) => {
-    connections.add(ws);
+  wss.on('connection', (ws, req) => {
+    const identity = (req as Record<string, unknown>).__userIdentity as import('../services/user').UserIdentity;
+    connections.add(ws, identity);
+    console.log(`[ws] connection: ${identity.email} (${identity.role})`);
 
     ws.on('message', (raw) => {
       try {
@@ -166,12 +168,15 @@ export function wsServerPlugin(): Plugin {
               async (req: import('http').IncomingMessage, socket: import('stream').Duplex, head: Buffer) => {
                 if (req.url !== '/ws') return;
 
-                const valid = await validateCfAccess(req);
-                if (!valid) {
+                const auth = await validateCfAccess(req);
+                if (!auth.valid) {
                   socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
                   socket.destroy();
                   return;
                 }
+                const { userService, LOCAL_ADMIN } = await import('../services/user');
+                const identity = auth.isLocal || !auth.email ? LOCAL_ADMIN : await userService.findOrCreate(auth.email);
+                (req as Record<string, unknown>).__userIdentity = identity;
 
                 wss!.handleUpgrade(req, socket, head, (ws) => {
                   wss!.emit('connection', ws, req);
@@ -184,8 +189,7 @@ export function wsServerPlugin(): Plugin {
             if (initState.initialized) return;
             initState.markInitialized();
 
-            const { registerAutoStart, registerWorktreeCleanup } =
-              await import('../controllers/oc');
+            const { registerAutoStart, registerWorktreeCleanup } = await import('../controllers/oc');
             const { sessionService } = await import('../services/session');
             const { removeWorktree, worktreeExists } = await import('../worktree');
             registerAutoStart(undefined, sessionService);
