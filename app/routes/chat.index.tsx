@@ -20,6 +20,16 @@ const ChatIndex = observer(function ChatIndex() {
   const [creating, setCreating] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Auto-redirect to most recent active card
+  useEffect(() => {
+    if (!cardStore.hydrated) return;
+    const recent = cardStore.cardsByCreatedDesc;
+    const active = recent.find((c) => c.column === 'running' || c.column === 'review');
+    if (active) {
+      navigate(`/chat/${active.id}`, { replace: true });
+    }
+  }, [cardStore.hydrated]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);

@@ -9,14 +9,28 @@ import SettingsProjectsModal from '~/routes/settings.projects';
 
 const SIDEBAR_KEY = 'chat-sidebar-open';
 
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    setIsDesktop(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isDesktop;
+}
+
 const ChatLayout = observer(function ChatLayout() {
   const store = useStore();
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams();
   const activeCardId = params.cardId ? Number(params.cardId) : null;
+  const isDesktop = useIsDesktop();
 
   const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches) return false;
     try {
       return localStorage.getItem(SIDEBAR_KEY) !== 'false';
     } catch {
@@ -28,6 +42,17 @@ const ChatLayout = observer(function ChatLayout() {
   useEffect(() => {
     store.subscribe(['backlog', 'ready', 'running', 'review', 'done', 'archive']);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Escape closes sidebar on mobile
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === 'Escape' && !isDesktop) setSidebarOpen(false);
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isDesktop]);
 
   function toggleSidebar() {
     setSidebarOpen((v) => {
@@ -78,7 +103,23 @@ const ChatLayout = observer(function ChatLayout() {
         </Button>
       </header>
       <div className="flex-1 flex overflow-hidden">
-        {sidebarOpen && (
+        {/* Mobile: overlay sidebar */}
+        {!isDesktop && sidebarOpen && (
+          <>
+            <div className="fixed inset-0 z-30 bg-black/50" onClick={() => setSidebarOpen(false)} />
+            <div className="fixed top-0 left-0 bottom-0 z-40 w-64 border-r border-border bg-card">
+              <ChatSidebar
+                activeCardId={activeCardId}
+                onNewChat={() => {
+                  handleNewChat();
+                  setSidebarOpen(false);
+                }}
+              />
+            </div>
+          </>
+        )}
+        {/* Desktop: inline sidebar */}
+        {isDesktop && sidebarOpen && (
           <div className="w-64 shrink-0 border-r border-border">
             <ChatSidebar activeCardId={activeCardId} onNewChat={handleNewChat} />
           </div>
