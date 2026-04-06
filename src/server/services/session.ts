@@ -64,6 +64,7 @@ async function ensureWorktree(card: Card): Promise<string> {
 
   card.worktreePath = wtPath;
   card.worktreeBranch = branch;
+  card.sourceBranch = card.sourceBranch ?? source ?? null;
   card.updatedAt = new Date().toISOString();
   await card.save();
   return wtPath;

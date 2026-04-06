@@ -55,6 +55,7 @@ class CardService {
         data.model = data.model ?? proj.defaultModel;
         data.thinkingLevel = data.thinkingLevel ?? proj.defaultThinkingLevel;
         data.useWorktree = data.useWorktree ?? proj.defaultWorktree;
+        data.sourceBranch = data.sourceBranch ?? proj.defaultBranch;
       }
     }
 

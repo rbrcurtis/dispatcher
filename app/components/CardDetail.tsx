@@ -862,7 +862,7 @@ function CopyPathButton({
   }
 
   const tooltip = worktreeBranch
-    ? `${worktreeBranch}${sourceBranch ? ` from ${sourceBranch}` : ''}`
+    ? `${worktreeBranch} from ${sourceBranch ?? 'main'}`
     : path
       ? `Copy path: ${path}`
       : 'No path available';
