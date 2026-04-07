@@ -235,6 +235,12 @@ export const clientMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('agent:status'), requestId: z.string(), data: z.object({ cardId: z.number() }) }),
 
   z.object({
+    type: z.literal('session:set-model'),
+    requestId: z.string(),
+    data: z.object({ cardId: z.number(), provider: z.string(), model: z.string() }),
+  }),
+
+  z.object({
     type: z.literal('session:load'),
     requestId: z.string(),
     data: z.object({ sessionId: z.string().optional(), cardId: z.number() }),
@@ -277,10 +283,11 @@ export const serverMessage = z.discriminatedUnion('type', [
     type: z.literal('session:history'),
     requestId: z.string(),
     cardId: z.number(),
-    messages: z.array(agentMessageSchema),
+    messages: z.array(z.unknown()),
   }),
 
-  z.object({ type: z.literal('agent:message'), cardId: z.number(), data: agentMessageSchema }),
+  z.object({ type: z.literal('session:message'), cardId: z.number(), message: z.unknown() }),
+  z.object({ type: z.literal('session:exit'), cardId: z.number(), sessionId: z.string().nullable() }),
   z.object({ type: z.literal('agent:status'), data: agentStatusSchema }),
 
   z.object({ type: z.literal('project:browse:result'), requestId: z.string(), data: z.unknown() }),
