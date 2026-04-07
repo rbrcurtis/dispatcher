@@ -16,6 +16,19 @@ const FORWARD_TYPES = new Set([
   'status',
 ]);
 
+function statusPayload(session: ActiveSession, active: boolean) {
+  return {
+    cardId: session.cardId,
+    active,
+    status: session.status,
+    sessionId: session.sessionId,
+    promptsSent: session.promptsSent,
+    turnsCompleted: session.turnsCompleted,
+    contextTokens: 0,
+    contextWindow: 200_000,
+  };
+}
+
 /**
  * Consumes the SDK Query async generator for a session.
  * Updates session state, publishes forwarded messages to the bus.
@@ -39,13 +52,7 @@ export async function consumeSession(
             session.sessionId = sys.session_id;
             session.status = 'running';
             log(`init sessionId=${sys.session_id}`);
-            messageBus.publish(`card:${cardId}:status`, {
-              active: true,
-              status: session.status,
-              sessionId: session.sessionId,
-              promptsSent: session.promptsSent,
-              turnsCompleted: session.turnsCompleted,
-            });
+            messageBus.publish(`card:${cardId}:status`, statusPayload(session, true));
           }
           break;
         }
@@ -54,13 +61,7 @@ export async function consumeSession(
         case 'stream_event':
           if (session.status !== 'running') {
             session.status = 'running';
-            messageBus.publish(`card:${cardId}:status`, {
-              active: true,
-              status: 'running',
-              sessionId: session.sessionId,
-              promptsSent: session.promptsSent,
-              turnsCompleted: session.turnsCompleted,
-            });
+            messageBus.publish(`card:${cardId}:status`, statusPayload(session, true));
           }
           break;
 
@@ -76,26 +77,14 @@ export async function consumeSession(
           session.turnCost = result.total_cost_usd ?? 0;
           session.status = 'completed';
           log(`result subtype=${result.subtype} cost=$${session.turnCost} turns=${session.turnsCompleted}`);
-          messageBus.publish(`card:${cardId}:status`, {
-            active: false,
-            status: 'completed',
-            sessionId: session.sessionId,
-            promptsSent: session.promptsSent,
-            turnsCompleted: session.turnsCompleted,
-          });
+          messageBus.publish(`card:${cardId}:status`, statusPayload(session, false));
           break;
         }
 
         case 'rate_limit':
           session.status = 'retry';
           log('rate_limit');
-          messageBus.publish(`card:${cardId}:status`, {
-            active: true,
-            status: 'retry',
-            sessionId: session.sessionId,
-            promptsSent: session.promptsSent,
-            turnsCompleted: session.turnsCompleted,
-          });
+          messageBus.publish(`card:${cardId}:status`, statusPayload(session, true));
           break;
 
         default:
@@ -108,13 +97,20 @@ export async function consumeSession(
       }
     }
   } catch (err) {
-    log(`consumer error: ${err}`);
-    session.status = 'errored';
-    messageBus.publish(`card:${cardId}:sdk`, {
-      type: 'error',
-      message: String(err),
-      timestamp: Date.now(),
-    });
+    // Ignore "Query closed" errors — these happen when stop() is called during cleanup
+    const errMsg = String(err);
+    if (errMsg.includes('Query closed before response received') || errMsg.includes('Operation aborted')) {
+      log(`consumer stopped cleanly: ${errMsg}`);
+      if (session.status !== 'completed') session.status = 'stopped';
+    } else {
+      log(`consumer error: ${err}`);
+      session.status = 'errored';
+      messageBus.publish(`card:${cardId}:sdk`, {
+        type: 'error',
+        message: errMsg,
+        timestamp: Date.now(),
+      });
+    }
   } finally {
     log(`consumer exited (status=${session.status})`);
     messageBus.publish(`card:${cardId}:exit`, {

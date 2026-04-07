@@ -37,6 +37,7 @@ export class SessionManager {
         includePartialMessages: true,
         ...(opts.resume ? { resume: opts.resume } : {}),
         env: {
+          ...process.env,
           ANTHROPIC_BASE_URL: process.env.CCR_URL ?? 'http://127.0.0.1:3456',
           ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
         },
@@ -92,7 +93,9 @@ export class SessionManager {
 
     console.log(`[session:${session.sessionId ?? cardId}] stop requested`);
     session.status = 'stopped';
-    session.query.interrupt();
+    session.query.interrupt().catch((err) => {
+      console.log(`[session:${session.sessionId ?? cardId}] interrupt cleanup: ${err}`);
+    });
   }
 
   setModel(cardId: number, provider: string, model: string): void {
