@@ -24,7 +24,8 @@ export class SessionManager {
     const card = await AppDataSource.getRepository(Card).findOneByOrFail({ id: cardId });
     const cwd = await ensureWorktree(card);
 
-    const modelStr = `${opts.provider}:${opts.model}`;
+    const isKiroProvider = opts.provider !== 'anthropic';
+    const modelStr = isKiroProvider ? `${opts.provider}:${opts.model}` : opts.model;
     const q = query({
       prompt,
       options: {
@@ -38,8 +39,8 @@ export class SessionManager {
         ...(opts.resume ? { resume: opts.resume } : {}),
         env: {
           ...process.env,
-          ANTHROPIC_BASE_URL: process.env.CCR_URL ?? 'http://127.0.0.1:3456',
           ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
+          ...(isKiroProvider ? { ANTHROPIC_BASE_URL: process.env.CCR_URL ?? 'http://127.0.0.1:3457' } : {}),
         },
       },
     });
