@@ -58,6 +58,7 @@ class CardService {
         data.sourceBranch = data.sourceBranch ?? proj.defaultBranch;
       }
     }
+    data.provider = data.provider ?? providerID;
 
     // Set contextWindow from provider config
     const modelCfg = getModelConfig(providerID, data.model ?? 'sonnet');

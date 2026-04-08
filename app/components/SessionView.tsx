@@ -221,7 +221,7 @@ export const SessionView = observer(function SessionView({
     setIsStarting(false);
   }
 
-  async function handleUpdateCard(data: { model?: string; thinkingLevel?: 'off' | 'low' | 'medium' | 'high' }) {
+  async function handleUpdateCard(data: { model?: string; provider?: string; thinkingLevel?: 'off' | 'low' | 'medium' | 'high' }) {
     await cardStore.updateCard({ id: cardId, ...data });
   }
 
@@ -301,6 +301,22 @@ export const SessionView = observer(function SessionView({
               {turnsCompleted}/{promptsSent} turns
             </span>
           )}
+          <select
+            value={providerID}
+            onChange={(e) => {
+              const newProvider = e.target.value;
+              const models = config.getModels(newProvider);
+              const defaultModel = models.length > 0 ? models[0][0] : 'sonnet';
+              handleUpdateCard({ provider: newProvider, model: defaultModel });
+            }}
+            className="text-[11px] bg-transparent text-muted-foreground border-none outline-none cursor-pointer hover:text-foreground min-w-0 truncate"
+          >
+            {config.allProviders.map(([id, p]) => (
+              <option key={id} value={id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
           <select
             value={model}
             onChange={(e) => handleUpdateCard({ model: e.target.value })}

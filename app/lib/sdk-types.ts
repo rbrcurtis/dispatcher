@@ -122,3 +122,47 @@ export type SdkMessage =
   | SdkRateLimit
   | SdkStatus
   | SdkError;
+
+// SessionMessage format returned by getSessionMessages()
+
+export interface HistoryUserMessage {
+  type: 'user';
+  uuid: string;
+  session_id: string;
+  parent_tool_use_id: null;
+  message: { role: 'user'; content: string | Array<{ type: string; [key: string]: unknown }> };
+}
+
+export interface HistoryAssistantContentBlock {
+  type: 'text' | 'thinking' | 'tool_use';
+  text?: string;
+  thinking?: string;
+  id?: string;
+  name?: string;
+  input?: unknown;
+  caller?: unknown;
+}
+
+export interface HistoryAssistantMessage {
+  type: 'assistant';
+  uuid: string;
+  session_id: string;
+  parent_tool_use_id: null;
+  message: {
+    role: 'assistant';
+    model: string;
+    content: HistoryAssistantContentBlock[];
+    stop_reason?: string;
+    usage?: unknown;
+  };
+}
+
+export interface HistorySystemMessage {
+  type: 'system';
+  uuid: string;
+  session_id: string;
+  parent_tool_use_id: null;
+  message: unknown;
+}
+
+export type HistoryMessage = HistoryUserMessage | HistoryAssistantMessage | HistorySystemMessage;

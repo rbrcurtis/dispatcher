@@ -1,7 +1,7 @@
 import { makeAutoObservable, observable, runInAction } from 'mobx';
 import type { AgentStatus, FileRef } from '../../src/shared/ws-protocol';
 import type { WsClient } from '../lib/ws-client';
-import type { SdkMessage } from '../lib/sdk-types';
+import type { SdkMessage, HistoryMessage } from '../lib/sdk-types';
 import { MessageAccumulator } from '../lib/message-accumulator';
 import { uuid } from '../lib/utils';
 
@@ -93,12 +93,9 @@ export class SessionStore {
   ingestHistory(cardId: number, messages: unknown[]): void {
     runInAction(() => {
       const s = this.getOrCreate(cardId);
-      if (s.historyLoaded && s.accumulator.conversation.length > 0) {
-        // Reconnect reload: clear and replay
-        s.accumulator.clear();
-      }
+      s.accumulator.clear();
       for (const msg of messages) {
-        s.accumulator.handleMessage(msg as SdkMessage);
+        s.accumulator.handleHistoryMessage(msg as HistoryMessage);
       }
       s.historyLoaded = true;
     });

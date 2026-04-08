@@ -494,7 +494,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
             sessionId={card.sessionId}
             accentColor={cardProject?.color}
             model={card.model ?? 'sonnet'}
-            providerID={cardProject?.providerID ?? 'anthropic'}
+            providerID={card.provider ?? cardProject?.providerID ?? 'anthropic'}
             thinkingLevel={card.thinkingLevel ?? 'high'}
           />
         )}

@@ -10,6 +10,8 @@ import type {
   ContentBlockStart,
   ContentBlockDelta,
   ContentBlockStop,
+  HistoryMessage,
+  HistoryAssistantContentBlock,
 } from './sdk-types';
 
 export interface ContentBlock {
@@ -115,6 +117,51 @@ export class MessageAccumulator {
   addUserMessage(content: string, optimistic = false): void {
     this.finalizeBlocks();
     this.conversation.push({ kind: 'user', content, optimistic });
+  }
+
+  handleHistoryMessage(msg: HistoryMessage): void {
+    switch (msg.type) {
+      case 'user': {
+        const { content } = msg.message;
+        if (typeof content === 'string') {
+          this.conversation.push({ kind: 'user', content });
+        } else if (Array.isArray(content)) {
+          // Array content: extract text blocks (user prompts), skip tool_result blocks
+          const text = content
+            .filter((b) => b.type === 'text')
+            .map((b) => (b as { text?: string }).text ?? '')
+            .join('\n');
+          if (text) this.conversation.push({ kind: 'user', content: text });
+        }
+        break;
+      }
+      case 'assistant': {
+        const blocks: ContentBlock[] = msg.message.content.map((b: HistoryAssistantContentBlock) => {
+          if (b.type === 'tool_use') {
+            return {
+              type: 'tool_use' as const,
+              content: b.name ?? '',
+              id: b.id,
+              name: b.name,
+              input: b.input !== undefined ? JSON.stringify(b.input) : '',
+              complete: true,
+            };
+          }
+          if (b.type === 'thinking') {
+            return { type: 'thinking' as const, content: b.thinking ?? '', complete: true };
+          }
+          // text
+          return { type: 'text' as const, content: b.text ?? '', complete: true };
+        });
+        if (blocks.length > 0) {
+          this.conversation.push({ kind: 'blocks', blocks, model: msg.message.model });
+        }
+        break;
+      }
+      case 'system':
+        // Skip system messages for now
+        break;
+    }
   }
 
   private handleStreamEvent(msg: SdkStreamEvent): void {
