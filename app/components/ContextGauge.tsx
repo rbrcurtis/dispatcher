@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '~/components/ui/dialog';
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '~/components/ui/alert-dialog';
 import { Button } from '~/components/ui/button';
 
 type Props = {
@@ -27,6 +28,7 @@ export function ContextGauge({ percent, compacted, onCompact }: Props) {
   const offset = 100 - clamped;
   const { color, glow } = getTier(clamped);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const confirmRef = useRef<HTMLButtonElement>(null);
 
   function handleClick() {
     if (!onCompact) return;
@@ -96,22 +98,33 @@ export function ContextGauge({ percent, compacted, onCompact }: Props) {
         </svg>
       </button>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Compact Context</DialogTitle>
-            <DialogDescription>
-              Compact the session context using AI summarization. This can't be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-              Cancel
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            requestAnimationFrame(() => confirmRef.current?.focus());
+          }}
+          onEscapeKeyDown={(e) => e.stopPropagation()}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Compact context?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Summarize the session context using AI. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              ref={confirmRef}
+              variant="ghost"
+              className="border border-neon-cyan/40 bg-neon-cyan/10 text-neon-cyan hover:bg-neon-cyan/20 hover:text-neon-cyan"
+              onClick={handleConfirm}
+            >
+              Compact
             </Button>
-            <Button onClick={handleConfirm}>Compact</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

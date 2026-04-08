@@ -15,7 +15,7 @@ interface SdkClient {
       tools?: Record<string, boolean>;
     }): Promise<void>;
     abort(opts: { sessionID: string; directory?: string }): Promise<void>;
-    summarize(opts: { sessionID: string; auto?: boolean }): Promise<unknown>;
+    summarize(opts: { sessionID: string; auto?: boolean; providerID?: string; modelID?: string }): Promise<unknown>;
     children(opts: { sessionID: string }): Promise<Array<{ id: string; title: string; parentID?: string }>>;
   };
   event: {
@@ -55,8 +55,8 @@ export class OpenCodeSession extends AgentSession {
   constructor(
     private client: unknown,
     private cwd: string,
-    private providerID: string,       // Orchestrel provider ID — for resolveModel()
-    private ocProviderID: string,     // OpenCode provider ID — for sdk.session.prompt()
+    private providerID: string, // Orchestrel provider ID — for resolveModel()
+    private ocProviderID: string, // OpenCode provider ID — for sdk.session.prompt()
     private modelID: string,
     private variant: string | undefined,
     private resumeSessionId?: string,
@@ -246,7 +246,12 @@ export class OpenCodeSession extends AgentSession {
 
     this.log('compact:start');
     try {
-      await sdk.session.summarize({ sessionID: this.sessionId, auto: false });
+      await sdk.session.summarize({
+        sessionID: this.sessionId,
+        auto: false,
+        providerID: this.ocProviderID,
+        modelID: this.modelID,
+      });
       this.log('compact:requested');
     } catch (err) {
       this.log(`compact:error ${String(err)}`);
