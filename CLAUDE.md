@@ -9,6 +9,17 @@ Personal kanban board + Claude Code orchestration app.
 - `pnpm start` — run built server directly
 - `sudo systemctl restart orchestrel` — restart the service (needed for server-side changes; frontend uses HMR)
 
+## Session Backend
+
+Orc uses [meridian](https://github.com/rynfar/meridian) as its session backend. Meridian runs as a separate systemd service (`claude-max-proxy`) on port 3456.
+
+- **Provider routing:** `x-meridian-profile` header selects the provider. Default = Anthropic (Claude Max), `kiro` = Kiro pool proxy (port 3457).
+- **Session tracking:** `x-opencode-session` header identifies sessions across requests.
+- **Streaming:** Meridian returns SSE (`text/event-stream`) responses. Orc parses SSE events, translates them to the existing socket.io message format, and forwards to the browser.
+- **Working directory:** Passed via `<env>` block in the system prompt; meridian's `extractClientCwd()` parses it.
+- **Config:** `~/.config/meridian/profiles.json` for provider profiles.
+- **Override:** Set `MERIDIAN_URL` env var to point to a different meridian instance.
+
 ## Code Style
 
 - TypeScript strict mode
@@ -40,6 +51,7 @@ This is a **purely event-driven system**. Every handler reacts to a single event
 - `src/server/init-state.ts` — holds WSS instance, initialization flag, and upgrade handler attachment. Always dynamically imported.
 - `src/server/ws/server.ts` — statically imported by `vite.config.ts` (exports `wsServerPlugin`). NO persistent state here.
 - On each `configureServer` call: REST middleware is re-wired (restApp closure), WSS upgrade handler is re-attached to the new httpServer. WSS creation, OC bus listeners, and OpenCode server start only happen once (guarded by `init-state.initialized`).
+- **SessionManager** also lives in a dynamically imported module and must survive restarts — it tracks active session IDs in memory. Meridian owns the actual agent sessions; SessionManager is lightweight (just in-memory session ID tracking).
 
 ## Dev Server
 
