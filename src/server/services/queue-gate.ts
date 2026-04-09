@@ -16,14 +16,12 @@ export function processQueue(projectId: number): Promise<void> {
 }
 
 async function processQueueImpl(projectId: number): Promise<void> {
-  const group = await Card.find({
-    where: {
-      column: 'running',
-      projectId,
-      useWorktree: false as unknown as boolean,
-    },
-    order: { queuePosition: 'ASC' },
-  });
+  const group = await Card.createQueryBuilder('card')
+    .where('card.column = :col', { col: 'running' })
+    .andWhere('card.project_id = :pid', { pid: projectId })
+    .andWhere('card.worktree_branch IS NULL')
+    .orderBy('card.queue_position', 'ASC')
+    .getMany();
 
   if (group.length === 0) {
     console.log(`[queue-gate] project=${projectId}: no non-worktree running cards`);

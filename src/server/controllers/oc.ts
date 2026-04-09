@@ -70,7 +70,7 @@ export function registerCardSession(cardId: number): void {
 
     // Process queue for non-worktree cards
     const freshCard = await repo.findOneBy({ id: cardId });
-    if (freshCard && !freshCard.useWorktree && freshCard.projectId) {
+    if (freshCard && !freshCard.worktreeBranch && freshCard.projectId) {
       processQueue(freshCard.projectId).catch((err) => {
         console.error(`[oc:${cardId}] processQueue failed on exit:`, err);
       });
@@ -104,7 +104,7 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       if (!fullCard) return;
 
       // Non-worktree cards on git repos: delegate to queue processing
-      if (!fullCard.useWorktree && fullCard.projectId) {
+      if (!fullCard.worktreeBranch && fullCard.projectId) {
         const proj = await Project.findOneBy({ id: fullCard.projectId });
         if (proj?.isGitRepo) {
           console.log(
@@ -121,7 +121,7 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       // Direct start (worktree or no project)
       console.log(
         `[oc:auto-start] card #${card.id} entered running ` +
-          `(worktree=${card.useWorktree}, project=${card.projectId})`,
+          `(worktree=${!!card.worktreeBranch}, project=${card.projectId})`,
       );
       const prompt = fullCard.pendingPrompt ?? (fullCard.sessionId ? '' : fullCard.description ?? '');
       fullCard.pendingPrompt = null;
@@ -143,7 +143,7 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       const sm = initState.getSessionManager();
       sm?.stop(card.id);
 
-      if (!card.useWorktree && card.projectId) {
+      if (!card.worktreeBranch && card.projectId) {
         const proj = await Project.findOneBy({ id: card.projectId });
         if (proj?.isGitRepo) {
           console.log(
@@ -170,23 +170,18 @@ export function registerWorktreeCleanup(bus: MessageBus = messageBus): void {
     if (newColumn !== 'archive' || oldColumn === 'archive') return;
 
     const c = card as Card;
-    if (!c.useWorktree || !c.worktreePath || !c.projectId) return;
+    if (!c.worktreeBranch || !c.projectId) return;
 
     try {
       const proj = await Project.findOneBy({ id: c.projectId });
       if (!proj) return;
 
+      const { resolveWorkDir } = await import('../../shared/worktree');
+      const wtPath = resolveWorkDir(c.worktreeBranch, proj.path);
       const { removeWorktree, worktreeExists } = await import('../worktree');
-      if (worktreeExists(c.worktreePath)) {
-        removeWorktree(proj.path, c.worktreePath);
-        console.log(`[oc:worktree] removed ${c.worktreePath}`);
-      }
-
-      const fresh = await Card.findOneBy({ id: c.id });
-      if (fresh) {
-        fresh.worktreePath = null;
-        fresh.updatedAt = new Date().toISOString();
-        await fresh.save();
+      if (worktreeExists(wtPath)) {
+        removeWorktree(proj.path, wtPath);
+        console.log(`[oc:worktree] removed ${wtPath}`);
       }
     } catch (err) {
       console.error(`[oc:worktree] cleanup failed for card ${c.id}:`, err);
