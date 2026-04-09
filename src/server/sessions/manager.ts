@@ -83,19 +83,7 @@ export class SessionManager {
 
     session.promptsSent++;
     session.status = 'starting';
-
-    session.query.streamInput(
-      (async function* () {
-        yield {
-          type: 'user' as const,
-          message: {
-            role: 'user' as const,
-            content: [{ type: 'text' as const, text: message }],
-          },
-          parent_tool_use_id: null,
-        };
-      })(),
-    );
+    session.pushMessage(userMessage(message));
   }
 
   stop(cardId: number): void {
