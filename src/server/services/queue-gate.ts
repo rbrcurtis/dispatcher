@@ -112,7 +112,6 @@ async function processQueueImpl(projectId: number): Promise<void> {
   await sm.start(toStart.id, prompt, {
     provider: toStart.provider,
     model: toStart.model,
-    cwd: process.cwd(),
     resume: toStart.sessionId ?? undefined,
   });
 
