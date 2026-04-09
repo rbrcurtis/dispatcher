@@ -1,10 +1,8 @@
 #!/usr/bin/env tsx
 import Database from 'better-sqlite3';
-import arg from 'arg';
 
-const args = arg({ '--db': String, '--dry-run': Boolean });
-const dbPath = args['--db'] ?? 'data/orchestrel.db';
-const dryRun = args['--dry-run'] ?? false;
+const dbPath = process.argv.find((_, i, a) => a[i - 1] === '--db') ?? 'data/orchestrel.db';
+const dryRun = process.argv.includes('--dry-run');
 
 function main() {
   const db = new Database(dbPath);
