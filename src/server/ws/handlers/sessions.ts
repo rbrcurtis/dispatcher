@@ -22,10 +22,13 @@ export async function handleSessionLoad(
 
     if (sessionId) {
       const card = await Card.findOneBy({ id: cardId });
-      let dir = card?.worktreePath ?? undefined;
-      if (!dir && card?.projectId) {
+      let dir: string | undefined;
+      if (card?.projectId) {
         const proj = await Project.findOneBy({ id: card.projectId });
-        dir = proj?.path;
+        if (proj) {
+          const { resolveWorkDir } = await import('../../../shared/worktree');
+          dir = resolveWorkDir(card.worktreeBranch, proj.path);
+        }
       }
       const messages = await getSessionMessages(sessionId, { dir });
       console.log(`[session:load] cardId=${cardId} loaded ${messages.length} history messages`);
