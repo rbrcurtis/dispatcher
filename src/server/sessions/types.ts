@@ -1,18 +1,18 @@
-import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+// src/server/sessions/types.ts
 
 export type SessionStatus = 'starting' | 'running' | 'completed' | 'errored' | 'stopped' | 'retry';
 
 export interface Usage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheRead: number;
-  cacheWrite: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
 }
 
 export interface ActiveSession {
   cardId: number;
-  query: Query;
   sessionId: string | null;
+  meridianSessionId: string; // x-opencode-session value
   provider: string;
   model: string;
   status: SessionStatus;
@@ -21,14 +21,12 @@ export interface ActiveSession {
   turnCost: number;
   turnUsage: Usage | null;
   cwd: string;
-  pushMessage: (msg: SDKUserMessage) => void;
-  closeInput: () => void;
+  abortController: AbortController;
   stopTimeout: ReturnType<typeof setTimeout> | null;
 }
 
 export interface SessionStartOpts {
   provider: string;
   model: string;
-  cwd: string;
   resume?: string;
 }
