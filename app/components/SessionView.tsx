@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Send, Square, AlertCircle, ChevronDown, Paperclip, X, WifiOff } from 'lucide-react';
+import { Send, Square, Play, AlertCircle, ChevronDown, Paperclip, X, WifiOff } from 'lucide-react';
 import { MessageBlock } from './MessageBlock';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
@@ -338,7 +338,7 @@ export const SessionView = observer(function SessionView({
             <option value="medium">Medium</option>
             <option value="high">High</option>
           </select>
-          {isStreaming && (
+          {isStreaming ? (
             <Button
               variant="ghost"
               size="sm"
@@ -349,7 +349,17 @@ export const SessionView = observer(function SessionView({
               <Square className="size-3 fill-current" />
               {isStopping ? 'Stopping...' : 'Stop'}
             </Button>
-          )}
+          ) : sessionId ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-6 px-2 text-xs text-muted-foreground"
+              onClick={() => handleSend('Continue')}
+            >
+              <Play className="size-3 fill-current" />
+              Continue
+            </Button>
+          ) : null}
         </div>
       )}
 
