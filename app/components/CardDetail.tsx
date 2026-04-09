@@ -400,7 +400,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
                     checked={!!draft.worktreeBranch}
                     disabled={!!card.worktreeBranch}
                     onCheckedChange={(checked) => {
-                      const branch = checked === true ? slugify(draft.title || card.title) : null;
+                      const branch = checked === true ? (slugify(draft.title || card.title) || null) : null;
                       setDraft((d) => ({ ...d, worktreeBranch: branch }));
                       saveAll({ worktreeBranch: branch });
                     }}
