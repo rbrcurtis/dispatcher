@@ -3,6 +3,7 @@ import type { ClientMessage } from '../../../shared/ws-protocol';
 import type { ConnectionManager } from '../connections';
 import { Card } from '../../models/Card';
 import { registerCardSession } from '../../controllers/oc';
+import { buildPromptWithFiles } from '../../sessions/manager';
 
 export async function handleAgentSend(
   ws: WebSocket,
@@ -11,7 +12,7 @@ export async function handleAgentSend(
 ): Promise<void> {
   const {
     requestId,
-    data: { cardId, message },
+    data: { cardId, message, files },
   } = msg;
   console.log(`[session:${cardId}] agent:send, len=${message.length}`);
 
@@ -23,11 +24,17 @@ export async function handleAgentSend(
     if (!sm) throw new Error('SessionManager not initialized');
 
     const card = await Card.findOneByOrFail({ id: cardId });
+    const prompt = buildPromptWithFiles(message, files);
 
     if (sm.isActive(cardId)) {
-      sm.sendFollowUp(cardId, message);
+      sm.sendFollowUp(cardId, prompt);
     } else {
-      await sm.start(cardId, message, {
+      if (card.column !== 'running') {
+        card.column = 'running';
+        card.updatedAt = new Date().toISOString();
+        await card.save();
+      }
+      await sm.start(cardId, prompt, {
         provider: card.provider,
         model: card.model,
         cwd: process.cwd(),

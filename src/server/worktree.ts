@@ -7,6 +7,16 @@ export function createWorktree(
   branch: string,
   sourceBranch?: string,
 ): void {
+  // Resolve to remote ref for branches like "dev" or "main"
+  let resolvedSource = sourceBranch;
+  if (sourceBranch && !sourceBranch.includes('/')) {
+    execFileSync('git', ['fetch', 'origin', sourceBranch], {
+      cwd: repoPath,
+      stdio: 'pipe',
+    });
+    resolvedSource = `origin/${sourceBranch}`;
+  }
+
   try {
     // Try attaching existing branch first
     execFileSync('git', ['worktree', 'add', worktreePath, branch], {
@@ -16,7 +26,7 @@ export function createWorktree(
   } catch {
     // Branch doesn't exist — create new branch from source
     const args = ['worktree', 'add', worktreePath, '-b', branch];
-    if (sourceBranch) args.push(sourceBranch);
+    if (resolvedSource) args.push(resolvedSource);
     execFileSync('git', args, {
       cwd: repoPath,
       stdio: 'pipe',

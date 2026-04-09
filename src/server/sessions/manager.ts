@@ -1,9 +1,23 @@
+import { resolve } from 'path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { ActiveSession, SessionStartOpts } from './types';
+import type { FileRef } from '../../shared/ws-protocol';
 import { consumeSession } from './consumer';
 import { ensureWorktree } from './worktree';
 import { Card } from '../models/Card';
 import { AppDataSource } from '../models/index';
+
+/** Prepend file-path instructions to a prompt when files are attached. */
+export function buildPromptWithFiles(message: string, files?: FileRef[]): string {
+  if (!files?.length) return message;
+  for (const f of files) {
+    if (!resolve(f.path).startsWith('/tmp/orchestrel-uploads/')) {
+      throw new Error(`Invalid file path: ${f.path}`);
+    }
+  }
+  const fileList = files.map((f) => `- ${f.path} (${f.name}, ${f.mimeType})`).join('\n');
+  return `I've attached the following files for you to review. Use the Read tool to read them:\n${fileList}\n\n${message}`;
+}
 
 export class SessionManager {
   private sessions = new Map<number, ActiveSession>();

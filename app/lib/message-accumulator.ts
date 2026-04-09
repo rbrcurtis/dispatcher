@@ -139,23 +139,34 @@ export class MessageAccumulator {
         break;
       }
       case 'assistant': {
-        const blocks: ContentBlock[] = msg.message.content.map((b: HistoryAssistantContentBlock) => {
-          if (b.type === 'tool_use') {
-            return {
-              type: 'tool_use' as const,
-              content: b.name ?? '',
-              id: b.id,
-              name: b.name,
-              input: b.input !== undefined ? JSON.stringify(b.input) : '',
-              complete: true,
-            };
-          }
-          if (b.type === 'thinking') {
-            return { type: 'thinking' as const, content: b.thinking ?? '', complete: true };
-          }
-          // text
-          return { type: 'text' as const, content: b.text ?? '', complete: true };
-        });
+        const blocks: ContentBlock[] = msg.message.content
+          .filter((b: HistoryAssistantContentBlock) => {
+            // SDK session JSONL records tool_use blocks twice: once with input when
+            // the model produces them, and again with empty input {} in the continued
+            // API response after tool results. Skip the empty duplicates.
+            if (b.type === 'tool_use') {
+              const inp = b.input as Record<string, unknown> | undefined;
+              if (!inp || Object.keys(inp).length === 0) return false;
+            }
+            return true;
+          })
+          .map((b: HistoryAssistantContentBlock) => {
+            if (b.type === 'tool_use') {
+              return {
+                type: 'tool_use' as const,
+                content: b.name ?? '',
+                id: b.id,
+                name: b.name,
+                input: b.input !== undefined ? JSON.stringify(b.input) : '',
+                complete: true,
+              };
+            }
+            if (b.type === 'thinking') {
+              return { type: 'thinking' as const, content: b.thinking ?? '', complete: true };
+            }
+            // text
+            return { type: 'text' as const, content: b.text ?? '', complete: true };
+          });
         if (blocks.length > 0) {
           this.conversation.push({ kind: 'blocks', blocks, model: msg.message.model });
         }
@@ -237,17 +248,17 @@ export class MessageAccumulator {
       data: {
         subtype: msg.subtype,
         costUsd: msg.total_cost_usd,
-        inputTokens: msg.usage.input_tokens,
-        outputTokens: msg.usage.output_tokens,
-        cacheRead: msg.usage.cache_read_input_tokens ?? 0,
-        cacheWrite: msg.usage.cache_creation_input_tokens ?? 0,
+        inputTokens: msg.usage?.input_tokens ?? 0,
+        outputTokens: msg.usage?.output_tokens ?? 0,
+        cacheRead: msg.usage?.cache_read_input_tokens ?? 0,
+        cacheWrite: msg.usage?.cache_creation_input_tokens ?? 0,
         numTurns: msg.num_turns,
         durationMs: msg.duration_ms,
         modelUsage: msg.model_usage
           ? Object.fromEntries(
               Object.entries(msg.model_usage).map(([k, v]) => [
                 k,
-                { inputTokens: v.input_tokens, outputTokens: v.output_tokens, costUsd: v.cost_usd },
+                { inputTokens: v?.input_tokens ?? 0, outputTokens: v?.output_tokens ?? 0, costUsd: v?.cost_usd ?? 0 },
               ]),
             )
           : undefined,

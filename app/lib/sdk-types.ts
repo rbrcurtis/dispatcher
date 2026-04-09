@@ -55,7 +55,7 @@ export interface SdkResultMessage {
   subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd';
   result?: string;
   total_cost_usd: number;
-  usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+  usage?: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
   num_turns: number;
   duration_ms: number;
   model_usage?: Record<string, { input_tokens: number; output_tokens: number; cost_usd: number }>;
