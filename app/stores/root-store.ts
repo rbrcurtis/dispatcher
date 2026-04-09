@@ -1,10 +1,10 @@
 import { makeAutoObservable } from 'mobx';
 import { WsClient } from '../lib/ws-client';
-import { CardStore, setCardStoreWs } from './card-store';
+import { CardStore } from './card-store';
 import { ConfigStore } from './config-store';
-import { ProjectStore, setProjectStoreWs } from './project-store';
-import { SessionStore, setSessionStoreWs } from './session-store';
-import type { Column, ServerMessage, User } from '../../src/shared/ws-protocol';
+import { ProjectStore } from './project-store';
+import { SessionStore } from './session-store';
+import type { Column, User } from '../../src/shared/ws-protocol';
 
 export class RootStore {
   currentUser: User | null = null;
@@ -19,7 +19,37 @@ export class RootStore {
     this.config = new ConfigStore();
     this.projects = new ProjectStore();
     this.sessions = new SessionStore();
-    this.ws = new WsClient((msg) => this.handleMessage(msg));
+
+    this.ws = new WsClient({
+      onSync: (data) => {
+        this.currentUser = data.user ?? null;
+        this.cards.hydrate(data.cards, true);
+        this.projects.hydrate(data.projects, true, data.users);
+        this.config.hydrate(data.providers);
+      },
+      onCardUpdated: (data) => {
+        const prev = this.cards.getCard(data.id);
+        if (
+          data.column === 'review' &&
+          prev &&
+          prev.column !== 'review' &&
+          !document.hasFocus() &&
+          Notification.permission === 'granted'
+        ) {
+          const n = new Notification(data.title, { body: 'moved to review' });
+          n.onclick = () => {
+            window.focus();
+            window.dispatchEvent(new CustomEvent('orchestrel:focus-card', { detail: { cardId: data.id } }));
+          };
+        }
+        this.cards.handleUpdated(data);
+      },
+      onCardDeleted: (data) => this.cards.handleDeleted(data.id),
+      onProjectUpdated: (data) => this.projects.handleUpdated(data),
+      onProjectDeleted: (data) => this.projects.handleDeleted(data.id),
+      onSessionMessage: (data) => this.sessions.ingestSdkMessage(data.cardId, data.message),
+      onAgentStatus: (data) => this.sessions.handleAgentStatus(data),
+    });
 
     makeAutoObservable(this, {
       ws: false,
@@ -29,9 +59,9 @@ export class RootStore {
       sessions: false,
     });
 
-    setCardStoreWs(this.ws);
-    setProjectStoreWs(this.ws);
-    setSessionStoreWs(this.ws);
+    this.cards.setWs(this.ws);
+    this.projects.setWs(this.ws);
+    this.sessions.setWs(this.ws);
 
     this.ws.onReconnect(() => this.sessions.resubscribeAll());
 
@@ -42,83 +72,6 @@ export class RootStore {
 
   subscribe(columns: string[]) {
     this.ws.subscribe(columns as Column[]);
-  }
-
-  private handleMessage(msg: ServerMessage) {
-    switch (msg.type) {
-      case 'sync':
-        this.currentUser = msg.user ?? null;
-        this.cards.hydrate(msg.cards, true);
-        this.projects.hydrate(msg.projects, true, msg.users);
-        this.config.hydrate(msg.providers);
-        break;
-
-      case 'card:updated': {
-        const prev = this.cards.getCard(msg.data.id);
-        if (
-          msg.data.column === 'review' &&
-          prev &&
-          prev.column !== 'review' &&
-          !document.hasFocus() &&
-          Notification.permission === 'granted'
-        ) {
-          const n = new Notification(msg.data.title, { body: 'moved to review' });
-          n.onclick = () => {
-            window.focus();
-            window.dispatchEvent(new CustomEvent('orchestrel:focus-card', { detail: { cardId: msg.data.id } }));
-          };
-        }
-        this.cards.handleUpdated(msg.data);
-        break;
-      }
-
-      case 'card:deleted':
-        this.cards.handleDeleted(msg.data.id);
-        break;
-
-      case 'project:updated':
-        this.projects.handleUpdated(msg.data);
-        break;
-
-      case 'project:deleted':
-        this.projects.handleDeleted(msg.data.id);
-        break;
-
-      case 'session:message':
-        this.sessions.ingestSdkMessage(msg.cardId, msg.message);
-        break;
-
-      case 'session:exit':
-        this.sessions.handleSessionExit(msg.cardId);
-        break;
-
-      case 'agent:status':
-        this.sessions.handleAgentStatus(msg.data);
-        break;
-
-      case 'session:history':
-        this.sessions.ingestHistory(msg.cardId, msg.messages as unknown[]);
-        break;
-
-      // page:result, search:result, project:browse:result — not routed to stores;
-      // components that need these should listen directly via WsClient or a separate handler
-      case 'page:result':
-      case 'search:result':
-      case 'project:browse:result':
-        // These are request/response patterns handled at the call site via mutate()
-        // They arrive as entity messages only if no requestId was tracked (shouldn't happen)
-        break;
-
-      case 'mutation:ok':
-      case 'mutation:error':
-        // handled in WsClient.handleRaw — should not reach here
-        break;
-
-      default: {
-        const _exhaust: never = msg;
-        console.warn('[ws] unhandled message type:', (_exhaust as ServerMessage).type);
-      }
-    }
   }
 
   dispose() {

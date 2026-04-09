@@ -1,25 +1,20 @@
 import { makeAutoObservable } from 'mobx';
 import type { Project, User } from '../../src/shared/ws-protocol';
 import type { WsClient } from '../lib/ws-client';
-import { uuid } from '../lib/utils';
-
-let _ws: WsClient | null = null;
-
-export function setProjectStoreWs(ws: WsClient) {
-  _ws = ws;
-}
-
-function ws(): WsClient {
-  if (!_ws) throw new Error('WsClient not set');
-  return _ws;
-}
 
 export class ProjectStore {
   projects = new Map<number, Project>();
   users: User[] = [];
+  private _ws: WsClient | null = null;
 
   constructor() {
-    makeAutoObservable(this);
+    makeAutoObservable<this, '_ws'>(this, { _ws: false });
+  }
+
+  setWs(ws: WsClient) { this._ws = ws; }
+  private ws(): WsClient {
+    if (!this._ws) throw new Error('WsClient not set');
+    return this._ws;
   }
 
   // ── Computed views ──────────────────────────────────────────────────────────
@@ -70,16 +65,11 @@ export class ProjectStore {
     color?: string | null;
     providerID?: string;
   }): Promise<Project> {
-    const requestId = uuid();
-    const project = await ws().mutate<Project>({
-      type: 'project:create',
-      requestId,
-      data: {
-        ...data,
-        setupCommands: data.setupCommands ?? undefined,
-        color: data.color ?? undefined,
-      },
-    });
+    const project = (await this.ws().emit('project:create', {
+      ...data,
+      setupCommands: data.setupCommands ?? undefined,
+      color: data.color ?? undefined,
+    })) as Project;
     this.projects.set(project.id, project);
     return project;
   }
@@ -100,17 +90,12 @@ export class ProjectStore {
     const existing = this.projects.get(data.id);
     if (existing) this.projects.set(data.id, { ...existing, ...data } as Project);
 
-    const requestId = uuid();
     try {
-      const project = await ws().mutate<Project>({
-        type: 'project:update',
-        requestId,
-        data: {
-          ...data,
-          setupCommands: data.setupCommands ?? undefined,
-          color: data.color ?? undefined,
-        },
-      });
+      const project = (await this.ws().emit('project:update', {
+        ...data,
+        setupCommands: data.setupCommands ?? undefined,
+        color: data.color ?? undefined,
+      })) as Project;
       this.projects.set(project.id, project);
       return project;
     } catch (err) {
@@ -123,9 +108,8 @@ export class ProjectStore {
     const existing = this.projects.get(id);
     this.projects.delete(id);
 
-    const requestId = uuid();
     try {
-      await ws().mutate({ type: 'project:delete', requestId, data: { id } });
+      await this.ws().emit('project:delete', { id });
     } catch (err) {
       if (existing) this.projects.set(id, existing);
       throw err;
@@ -133,12 +117,10 @@ export class ProjectStore {
   }
 
   async browse(path: string): Promise<unknown> {
-    const requestId = uuid();
-    return ws().mutate({ type: 'project:browse', requestId, data: { path } });
+    return this.ws().emit('project:browse', { path });
   }
 
   async mkdir(path: string): Promise<unknown> {
-    const requestId = uuid();
-    return ws().mutate({ type: 'project:mkdir', requestId, data: { path } });
+    return this.ws().emit('project:mkdir', { path });
   }
 }

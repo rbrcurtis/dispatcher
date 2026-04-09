@@ -1,25 +1,20 @@
 import { makeAutoObservable, runInAction } from 'mobx';
 import type { Card, Column } from '../../src/shared/ws-protocol';
 import type { WsClient } from '../lib/ws-client';
-import { uuid } from '../lib/utils';
-
-let _ws: WsClient | null = null;
-
-export function setCardStoreWs(ws: WsClient) {
-  _ws = ws;
-}
-
-function ws(): WsClient {
-  if (!_ws) throw new Error('WsClient not set');
-  return _ws;
-}
 
 export class CardStore {
   cards = new Map<number, Card>();
   hydrated = false;
+  private _ws: WsClient | null = null;
 
   constructor() {
-    makeAutoObservable(this);
+    makeAutoObservable<this, '_ws'>(this, { _ws: false });
+  }
+
+  setWs(ws: WsClient) { this._ws = ws; }
+  private ws(): WsClient {
+    if (!this._ws) throw new Error('WsClient not set');
+    return this._ws;
   }
 
   // ── Computed views ──────────────────────────────────────────────────────────
@@ -73,25 +68,22 @@ export class CardStore {
     column?: Column | null;
     projectId?: number | null;
     model?: string;
+    provider?: string;
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
     useWorktree?: boolean;
     sourceBranch?: 'main' | 'dev' | null;
   }): Promise<Card> {
-    const requestId = uuid();
-    const card = await ws().mutate<Card>({
-      type: 'card:create',
-      requestId,
-      data: {
-        title: data.title,
-        description: data.description ?? undefined,
-        column: data.column ?? undefined,
-        projectId: data.projectId,
-        model: data.model,
-        thinkingLevel: data.thinkingLevel,
-        useWorktree: data.useWorktree,
-        sourceBranch: data.sourceBranch,
-      },
-    });
+    const card = (await this.ws().emit('card:create', {
+      title: data.title,
+      description: data.description ?? undefined,
+      column: data.column ?? undefined,
+      projectId: data.projectId,
+      model: data.model,
+      provider: data.provider,
+      thinkingLevel: data.thinkingLevel,
+      useWorktree: data.useWorktree,
+      sourceBranch: data.sourceBranch,
+    })) as Card;
     runInAction(() => this.cards.set(card.id, card));
     return card;
   }
@@ -102,21 +94,16 @@ export class CardStore {
     model?: string;
     thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
   }): Promise<Card> {
-    const requestId = uuid();
-    const card = await ws().mutate<Card>({
-      type: 'card:create',
-      requestId,
-      data: {
-        title: 'New chat',
-        description: data.description,
-        column: 'running',
-        projectId: data.projectId,
-        model: data.model,
-        thinkingLevel: data.thinkingLevel,
-        useWorktree: false,
-        archiveOthers: true,
-      },
-    });
+    const card = (await this.ws().emit('card:create', {
+      title: 'New chat',
+      description: data.description,
+      column: 'running',
+      projectId: data.projectId,
+      model: data.model,
+      thinkingLevel: data.thinkingLevel,
+      useWorktree: false,
+      archiveOthers: true,
+    })) as Card;
     runInAction(() => this.cards.set(card.id, card));
     return card;
   }
@@ -136,16 +123,11 @@ export class CardStore {
     const existing = this.cards.get(data.id);
     if (existing) this.cards.set(data.id, { ...existing, ...data } as Card);
 
-    const requestId = uuid();
     try {
-      const card = await ws().mutate<Card>({
-        type: 'card:update',
-        requestId,
-        data: {
-          ...data,
-          description: data.description ?? undefined,
-        },
-      });
+      const card = (await this.ws().emit('card:update', {
+        ...data,
+        description: data.description ?? undefined,
+      })) as Card;
       runInAction(() => this.cards.set(card.id, card));
       return card;
     } catch (err) {
@@ -160,9 +142,8 @@ export class CardStore {
     const existing = this.cards.get(id);
     this.cards.delete(id);
 
-    const requestId = uuid();
     try {
-      await ws().mutate({ type: 'card:delete', requestId, data: { id } });
+      await this.ws().emit('card:delete', { id });
     } catch (err) {
       runInAction(() => {
         if (existing) this.cards.set(id, existing);
@@ -172,18 +153,15 @@ export class CardStore {
   }
 
   async reorderQueue(cardId: number, newPosition: number) {
-    const requestId = uuid();
-    await ws().mutate({ type: 'queue:reorder', requestId, cardId, newPosition });
+    await this.ws().emit('queue:reorder', { cardId, newPosition });
   }
 
   async generateTitle(id: number): Promise<void> {
-    const requestId = uuid();
-    await ws().mutate({ type: 'card:generateTitle', requestId, data: { id } });
+    await this.ws().emit('card:generateTitle', { id });
   }
 
   async suggestTitle(description: string): Promise<string | null> {
-    const requestId = uuid();
-    const res = await ws().mutate({ type: 'card:suggestTitle', requestId, data: { description } });
+    const res = await this.ws().emit('card:suggestTitle', { description });
     return typeof res === 'string' ? res : null;
   }
 }

@@ -1,176 +1,104 @@
-import { serverMessage, type ClientMessage, type Column, type ServerMessage } from '../../src/shared/ws-protocol';
+import { io, Socket } from 'socket.io-client';
+import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Column,
+  SyncPayload,
+  AckResponse,
+} from '../../src/shared/ws-protocol';
 
-type EntityHandler = (msg: ServerMessage) => void;
+type AppSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 export class WsClient {
-  private ws: WebSocket | null = null;
-  private pending = new Map<
-    string,
-    {
-      resolve: (data: unknown) => void;
-      reject: (err: Error) => void;
-      timeout: ReturnType<typeof setTimeout>;
-    }
-  >();
-  private onEntity: EntityHandler;
+  readonly socket: AppSocket;
   private subscribedColumns: Column[] = [];
-  private reconnectAttempt = 0;
-  private maxReconnectDelay = 30_000;
-  private disposed = false;
-  private sendQueue: string[] = [];
   private reconnectCb: (() => void) | null = null;
+  private disposed = false;
 
-  private lastConnectTime = 0;
+  constructor(handlers: {
+    onSync: (data: SyncPayload) => void;
+    onCardUpdated: (data: import('../../src/shared/ws-protocol').Card) => void;
+    onCardDeleted: (data: { id: number }) => void;
+    onProjectUpdated: (data: import('../../src/shared/ws-protocol').Project) => void;
+    onProjectDeleted: (data: { id: number }) => void;
+    onSessionMessage: (data: { cardId: number; message: unknown }) => void;
+    onAgentStatus: (data: import('../../src/shared/ws-protocol').AgentStatus) => void;
+  }) {
+    this.socket = io({
+      withCredentials: true,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30_000,
+      reconnectionAttempts: Infinity,
+      timeout: 10_000,
+    });
 
-  constructor(onEntity: EntityHandler) {
-    this.onEntity = onEntity;
-    this.connect();
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') this.checkAlive();
-      });
-    }
-  }
+    // Wire server→client events
+    this.socket.on('sync', handlers.onSync);
+    this.socket.on('card:updated', handlers.onCardUpdated);
+    this.socket.on('card:deleted', handlers.onCardDeleted);
+    this.socket.on('project:updated', handlers.onProjectUpdated);
+    this.socket.on('project:deleted', handlers.onProjectDeleted);
+    this.socket.on('session:message', handlers.onSessionMessage);
+    this.socket.on('agent:status', handlers.onAgentStatus);
 
-  /** Force-reconnect if the socket looks dead after iOS resume */
-  private checkAlive() {
-    if (this.disposed || !this.ws) return;
-    // If we connected very recently, skip the check
-    if (Date.now() - this.lastConnectTime < 3_000) return;
-    if (this.ws.readyState !== WebSocket.OPEN) return;
-    // The socket thinks it's open, but the TCP connection may be dead.
-    // Send a no-op message and if the socket errors, onclose → reconnect.
-    // As a fallback, force-close if we don't get any response in 3s.
-    const ws = this.ws; // capture ref — don't close a newer socket if this one dies naturally
-    const timer = setTimeout(() => {
-      if (this.ws !== ws) return; // socket already replaced by a reconnect
-      console.warn('[ws] no response after resume, forcing reconnect');
-      ws.close();
-    }, 3_000);
-    // Any incoming message proves the connection is alive
-    const origHandler = ws.onmessage;
-    ws.onmessage = (evt) => {
-      clearTimeout(timer);
-      ws.onmessage = origHandler;
-      origHandler?.call(ws, evt);
-    };
-    // Send a subscribe re-send (idempotent, already tracked server-side)
-    if (this.subscribedColumns.length > 0) {
-      this.send({ type: 'subscribe', columns: this.subscribedColumns });
-    }
-  }
-
-  private get wsUrl(): string {
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${location.host}/ws`;
-  }
-
-  private connect() {
-    if (this.disposed) return;
-    this.ws = new WebSocket(this.wsUrl);
-    this.ws.onopen = () => {
-      const isReconnect = this.reconnectAttempt > 0;
-      this.reconnectAttempt = 0;
-      this.lastConnectTime = Date.now();
+    this.socket.on('connect', () => {
+      console.log('[ws] connected');
       if (this.subscribedColumns.length > 0) {
-        this.send({ type: 'subscribe', columns: this.subscribedColumns });
+        this.subscribe(this.subscribedColumns);
       }
-      // Flush messages queued while connecting
-      for (const raw of this.sendQueue) {
-        this.ws!.send(raw);
-      }
-      this.sendQueue = [];
-      if (isReconnect) this.reconnectCb?.();
-    };
-    this.ws.onmessage = (evt) => this.handleRaw(evt.data as string);
-    this.ws.onclose = () => {
-      if (!this.disposed) this.scheduleReconnect();
-    };
-    this.ws.onerror = () => this.ws?.close();
-  }
+    });
 
-  private scheduleReconnect() {
-    const delay = Math.min(1000 * 2 ** this.reconnectAttempt, this.maxReconnectDelay);
-    this.reconnectAttempt++;
-    for (const [, p] of this.pending) {
-      clearTimeout(p.timeout);
-      p.reject(new Error('WebSocket disconnected'));
-    }
-    this.pending.clear();
-    this.sendQueue = [];
-    setTimeout(() => this.connect(), delay);
-  }
+    this.socket.io.on('reconnect', () => {
+      console.log('[ws] reconnected');
+      this.reconnectCb?.();
+    });
 
-  private handleRaw(raw: string) {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      const msg = serverMessage.parse(parsed);
-      if (msg.type === 'mutation:ok' || msg.type === 'mutation:error') {
-        const p = this.pending.get(msg.requestId);
-        if (p) {
-          clearTimeout(p.timeout);
-          this.pending.delete(msg.requestId);
-          if (msg.type === 'mutation:ok') p.resolve(msg.data);
-          else p.reject(new Error(msg.error));
-        }
-      } else {
-        this.onEntity(msg);
-      }
-    } catch (err) {
-      console.error('[ws] parse error:', err);
-    }
+    this.socket.on('disconnect', (reason) => {
+      console.log('[ws] disconnected:', reason);
+    });
+
+    this.socket.on('connect_error', (err) => {
+      console.error('[ws] connect error:', err.message);
+    });
   }
 
   get connected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
+    return this.socket.connected;
   }
 
-  /** Force-close and immediately reconnect (manual recovery for PWA resume) */
   forceReconnect() {
     if (this.disposed) return;
     console.log('[ws] force reconnect requested');
-    // Close triggers onclose → scheduleReconnect with exponential backoff.
-    // Instead, reset attempt counter so reconnect is instant.
-    this.reconnectAttempt = 0;
-    this.ws?.close();
-  }
-
-  send(msg: ClientMessage) {
-    const raw = JSON.stringify(msg);
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(raw);
-    } else if (this.ws?.readyState === WebSocket.CONNECTING) {
-      this.sendQueue.push(raw);
-    }
+    this.socket.disconnect().connect();
   }
 
   onReconnect(cb: () => void) {
     this.reconnectCb = cb;
   }
 
-  subscribe(columns: Column[]) {
+  async subscribe(columns: Column[]): Promise<SyncPayload | undefined> {
     this.subscribedColumns = columns;
-    this.send({ type: 'subscribe', columns });
+    const res = await this.socket.emitWithAck('subscribe', columns);
+    if (res.error) {
+      console.error('[ws] subscribe error:', res.error);
+      return undefined;
+    }
+    return res.data;
   }
 
-  async mutate<T = unknown>(msg: ClientMessage & { requestId: string }): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(msg.requestId);
-        reject(new Error('Mutation timeout'));
-      }, 15_000);
-      this.pending.set(msg.requestId, { resolve: resolve as (data: unknown) => void, reject, timeout });
-      this.send(msg);
-    });
+  /** Generic ack-based emit. Throws on error response. */
+  async emit(event: string, data: unknown): Promise<unknown> {
+    const res = await (this.socket as AppSocket).emitWithAck(event as keyof ClientToServerEvents, data as never);
+    const r = res as AckResponse;
+    if (r && typeof r === 'object' && 'error' in r && r.error) {
+      throw new Error(r.error);
+    }
+    return r && typeof r === 'object' && 'data' in r ? r.data : undefined;
   }
 
   dispose() {
     this.disposed = true;
-    this.ws?.close();
-    for (const [, p] of this.pending) {
-      clearTimeout(p.timeout);
-      p.reject(new Error('Disposed'));
-    }
-    this.pending.clear();
+    this.socket.disconnect();
   }
 }
