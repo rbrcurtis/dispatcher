@@ -3,18 +3,6 @@ import type { AgentStatus, FileRef } from '../../src/shared/ws-protocol';
 import type { WsClient } from '../lib/ws-client';
 import type { SdkMessage, HistoryMessage } from '../lib/sdk-types';
 import { MessageAccumulator } from '../lib/message-accumulator';
-import { uuid } from '../lib/utils';
-
-let _ws: WsClient | null = null;
-
-export function setSessionStoreWs(ws: WsClient) {
-  _ws = ws;
-}
-
-function ws(): WsClient {
-  if (!_ws) throw new Error('WsClient not set');
-  return _ws;
-}
 
 export interface SessionState {
   active: boolean;
@@ -47,11 +35,19 @@ export class SessionStore {
   subscribedCards = new Set<number>();
   stoppingCards = observable.set<number>();
   private stopIntervals = new Map<number, NodeJS.Timeout>();
+  private _ws: WsClient | null = null;
 
   constructor() {
-    makeAutoObservable<this, 'stopIntervals'>(this, {
+    makeAutoObservable<this, 'stopIntervals' | '_ws'>(this, {
       stopIntervals: false,
+      _ws: false,
     });
+  }
+
+  setWs(ws: WsClient) { this._ws = ws; }
+  private ws(): WsClient {
+    if (!this._ws) throw new Error('WsClient not set');
+    return this._ws;
   }
 
   private getOrCreate(cardId: number): SessionState {
@@ -173,31 +169,17 @@ export class SessionStore {
       s.promptsSent = (s.promptsSent ?? 0) + 1;
     });
 
-    const requestId = uuid();
     try {
-      await ws().mutate({
-        type: 'agent:send',
-        requestId,
-        data: { cardId, message, files },
-      });
+      await this.ws().emit('agent:send', { cardId, message, files });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg === 'Mutation timeout' || msg === 'WebSocket disconnected') {
-        console.warn(`[session] agent:send ${msg} for card ${cardId}, verifying status…`);
-        this.requestStatus(cardId).catch(() => {});
-        return;
-      }
-      throw err;
+      console.warn(`[session] agent:send error for card ${cardId}: ${msg}, verifying status…`);
+      this.requestStatus(cardId).catch(() => {});
     }
   }
 
   async compactSession(cardId: number): Promise<void> {
-    const requestId = uuid();
-    await ws().mutate({
-      type: 'agent:compact',
-      requestId,
-      data: { cardId },
-    });
+    await this.ws().emit('agent:compact', { cardId });
   }
 
   stopSession(cardId: number): void {
@@ -207,28 +189,27 @@ export class SessionStore {
 
     runInAction(() => this.stoppingCards.add(cardId));
 
-    const sendStop = () => ws().send({ type: 'agent:stop', requestId: uuid(), data: { cardId } });
+    const sendStop = () => {
+      this.ws().socket.emit('agent:stop', { cardId }, () => {});
+    };
     sendStop();
     this.stopIntervals.set(cardId, setInterval(sendStop, 1000));
   }
 
   async requestStatus(cardId: number): Promise<void> {
-    const requestId = uuid();
-    await ws().mutate({
-      type: 'agent:status',
-      requestId,
-      data: { cardId },
-    });
+    await this.ws().emit('agent:status', { cardId });
   }
 
   async loadHistory(cardId: number, sessionId?: string | null): Promise<void> {
     this.subscribedCards.add(cardId);
-    const requestId = uuid();
-    await ws().mutate({
-      type: 'session:load',
-      requestId,
-      data: { cardId, ...(sessionId ? { sessionId } : {}) },
-    });
+    const result = (await this.ws().emit('session:load', {
+      cardId,
+      ...(sessionId ? { sessionId } : {}),
+    })) as { messages: unknown[] } | undefined;
+
+    if (result?.messages) {
+      this.ingestHistory(cardId, result.messages);
+    }
   }
 
   async resubscribeAll(): Promise<void> {
@@ -237,16 +218,13 @@ export class SessionStore {
       if (s) s.historyLoaded = false;
 
       const sid = s?.sessionId;
-      const requestId = uuid();
-      ws()
-        .mutate({
-          type: 'session:load',
-          requestId,
-          data: { cardId, ...(sid ? { sessionId: sid } : {}) },
-        })
-        .catch((err) => console.warn('[ws] resubscribe failed for card', cardId, err));
+      this.loadHistory(cardId, sid).catch((err) =>
+        console.warn('[ws] resubscribe failed for card', cardId, err),
+      );
 
-      this.requestStatus(cardId).catch((err) => console.warn('[ws] status request failed for card', cardId, err));
+      this.requestStatus(cardId).catch((err) =>
+        console.warn('[ws] status request failed for card', cardId, err),
+      );
     }
   }
 }
