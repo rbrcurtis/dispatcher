@@ -95,6 +95,14 @@ export class SessionManager {
     session.query.interrupt().catch((err) => {
       console.log(`[session:${session.sessionId ?? cardId}] interrupt cleanup: ${err}`);
     });
+
+    // Hard kill fallback if interrupt doesn't terminate the session
+    session.stopTimeout = setTimeout(() => {
+      if (!this.sessions.has(cardId)) return;
+      console.log(`[session:${session.sessionId ?? cardId}] interrupt timeout, forcing close`);
+      session.closeInput();
+      session.query.close();
+    }, 5_000);
   }
 
   setModel(cardId: number, provider: string, model: string): void {
