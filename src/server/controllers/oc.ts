@@ -28,14 +28,25 @@ export function registerCardSession(cardId: number): void {
         card.sessionId = session.sessionId;
       }
 
-      if (card.column === 'running') card.column = 'review';
       card.updatedAt = new Date().toISOString();
       await repo.save(card);
     }
 
-    // Compact boundary: reset context tokens
     if (msg.type === 'system') {
-      const sys = msg as { subtype?: string };
+      const sys = msg as { subtype?: string; session_id?: string };
+
+      // Session init: persist sessionId immediately so UI can show copy button
+      if (sys.subtype === 'init' && sys.session_id) {
+        const card = await repo.findOneBy({ id: cardId });
+        if (card && !card.sessionId) {
+          card.sessionId = sys.session_id;
+          card.updatedAt = new Date().toISOString();
+          await repo.save(card);
+          console.log(`[oc:${cardId}] init: persisted sessionId=${sys.session_id}`);
+        }
+      }
+
+      // Compact boundary: reset context tokens
       if (sys.subtype === 'compact_boundary') {
         const card = await repo.findOneBy({ id: cardId });
         if (card) {
@@ -49,21 +60,18 @@ export function registerCardSession(cardId: number): void {
   };
 
   // Exit: move to review if errored/stopped, unsubscribe
-  const exitHandler = async (rawPayload: unknown) => {
-    const payload = rawPayload as { sessionId: string | null; status: string };
-    if (payload.status === 'errored' || payload.status === 'stopped') {
-      const card = await repo.findOneBy({ id: cardId });
-      if (card && card.column === 'running') {
-        card.column = 'review';
-        card.updatedAt = new Date().toISOString();
-        await repo.save(card);
-      }
+  const exitHandler = async (_rawPayload: unknown) => {
+    const card = await repo.findOneBy({ id: cardId });
+    if (card && card.column === 'running') {
+      card.column = 'review';
+      card.updatedAt = new Date().toISOString();
+      await repo.save(card);
     }
 
     // Process queue for non-worktree cards
-    const card = await repo.findOneBy({ id: cardId });
-    if (card && !card.useWorktree && card.projectId) {
-      processQueue(card.projectId).catch((err) => {
+    const freshCard = await repo.findOneBy({ id: cardId });
+    if (freshCard && !freshCard.useWorktree && freshCard.projectId) {
+      processQueue(freshCard.projectId).catch((err) => {
         console.error(`[oc:${cardId}] processQueue failed on exit:`, err);
       });
     }
@@ -90,6 +98,7 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       const initState = await import('../init-state');
       const sm = initState.getSessionManager();
       if (!sm) return;
+      if (sm.isActive(card.id)) return; // Already started (e.g. by consumer init)
 
       const fullCard = await repo().findOneBy({ id: card.id });
       if (!fullCard) return;
@@ -114,7 +123,7 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
         `[oc:auto-start] card #${card.id} entered running ` +
           `(worktree=${card.useWorktree}, project=${card.projectId})`,
       );
-      const prompt = fullCard.pendingPrompt ?? fullCard.description ?? '';
+      const prompt = fullCard.pendingPrompt ?? (fullCard.sessionId ? '' : fullCard.description ?? '');
       fullCard.pendingPrompt = null;
       fullCard.pendingFiles = null;
       await repo().save(fullCard);

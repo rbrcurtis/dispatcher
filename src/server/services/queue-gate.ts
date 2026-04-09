@@ -105,7 +105,7 @@ async function processQueueImpl(projectId: number): Promise<void> {
   if (!sm) throw new Error('SessionManager not initialized');
 
   console.log(`[queue-gate] project=${projectId}: launching session for card #${toStart.id}`);
-  const prompt = toStart.pendingPrompt ?? toStart.description ?? '';
+  const prompt = toStart.pendingPrompt ?? (toStart.sessionId ? '' : toStart.description ?? '');
   toStart.pendingPrompt = null;
   toStart.pendingFiles = null;
   toStart.updatedAt = new Date().toISOString();
