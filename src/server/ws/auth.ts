@@ -1,10 +1,11 @@
 import type { IncomingMessage } from 'http';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import type { Socket } from 'socket.io';
+import type { ClientToServerEvents, ServerToClientEvents, SocketData } from '../../shared/ws-protocol';
 
 const CF_TEAM_DOMAIN = process.env.CF_TEAM_DOMAIN ?? '';
 const CERTS_URL = `https://${CF_TEAM_DOMAIN}.cloudflareaccess.com/cdn-cgi/access/certs`;
 
-// jose caches JWK set and handles rotation automatically
 const jwks = CF_TEAM_DOMAIN ? createRemoteJWKSet(new URL(CERTS_URL)) : null;
 
 export interface AuthResult {
@@ -13,26 +14,15 @@ export interface AuthResult {
   isLocal: boolean;
 }
 
-/**
- * Check whether a request originates from localhost or the LAN.
- * These bypass CF Access auth since they never traverse the tunnel.
- */
 function isLocalRequest(req: IncomingMessage): boolean {
   const host = req.headers.host ?? '';
-  // Direct localhost or LAN IP access — no CF tunnel involved
   if (host.startsWith('localhost') || host.startsWith('127.') || host.startsWith('192.168.')) {
     return true;
   }
   return false;
 }
 
-/**
- * Validate Cloudflare Access JWT from the CF_Authorization cookie.
- * Uses jose for full cryptographic signature verification.
- * In dev mode or on localhost/LAN, skip validation.
- */
 export async function validateCfAccess(req: IncomingMessage): Promise<AuthResult> {
-  // Localhost/LAN connections bypass CF Access (they don't go through the tunnel)
   if (isLocalRequest(req)) return { valid: true, isLocal: true };
 
   if (!jwks) {
@@ -60,5 +50,29 @@ export async function validateCfAccess(req: IncomingMessage): Promise<AuthResult
   } catch (err) {
     console.log('[ws:auth] JWT verify failed:', err instanceof Error ? err.message : err);
     return { valid: false, isLocal: false };
+  }
+}
+
+type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
+
+/** Socket.IO middleware — validates CF Access JWT and attaches user identity to socket.data */
+export async function socketAuthMiddleware(
+  socket: AppSocket,
+  next: (err?: Error) => void,
+): Promise<void> {
+  try {
+    const req = socket.request;
+    const auth = await validateCfAccess(req);
+    if (!auth.valid) {
+      next(new Error('Unauthorized'));
+      return;
+    }
+    const { userService, LOCAL_ADMIN } = await import('../services/user');
+    const identity = auth.isLocal || !auth.email ? LOCAL_ADMIN : await userService.findOrCreate(auth.email);
+    socket.data.identity = { id: identity.id, email: identity.email, role: identity.role };
+    console.log(`[ws] auth: ${identity.email} (${identity.role})`);
+    next();
+  } catch (err) {
+    next(new Error(err instanceof Error ? err.message : 'Auth failed'));
   }
 }
