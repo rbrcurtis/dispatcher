@@ -46,6 +46,10 @@ export function createPromptChannel(): PromptChannel {
       close();
       return Promise.resolve({ value: undefined as never, done: true as const });
     },
+    throw(err?: unknown) {
+      close();
+      return Promise.reject(err);
+    },
   };
 
   return { push, close, iterator };
