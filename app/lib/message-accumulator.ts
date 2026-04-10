@@ -88,7 +88,6 @@ export class MessageAccumulator {
         this.handleStreamEvent(msg);
         break;
       case 'assistant':
-        this.finalizeBlocks();
         break;
       case 'result':
         this.handleResult(msg);
