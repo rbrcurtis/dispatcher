@@ -9,16 +9,27 @@ Personal kanban board + Claude Code orchestration app.
 - `pnpm start` — run built server directly
 - `sudo systemctl restart orchestrel` — restart the service (needed for server-side changes; frontend uses HMR)
 
-## Session Backend
+## Architecture Layers
 
-Orc uses [meridian](https://github.com/rynfar/meridian) as its session backend. Meridian runs as a separate systemd service (`claude-max-proxy`) on port 3456.
+| # | Layer | Description | Location |
+|---|-------|-------------|----------|
+| 1 | **Orc UI** | React frontend, runs in browser | `app/` |
+| 2 | **Orc Backend** | Vite dev server, socket.io, REST, controllers, bus | `src/server/` |
+| 3 | **orcd** | Standalone daemon, manages sessions via Agent SDK | `src/orcd/` |
+| 4 | **Agent Processes** | Claude Code subprocesses spawned by SDK `query()` | managed by SDK |
+| 5 | **KPP / proxies** | Provider routing proxies (kiro-pool-proxy, future) | separate services |
 
-- **Provider routing:** `x-meridian-profile` header selects the provider. Default = Anthropic (Claude Max), `kiro` = Kiro pool proxy (port 3457).
-- **Session tracking:** `x-opencode-session` header identifies sessions across requests.
-- **Streaming:** Meridian returns SSE (`text/event-stream`) responses. Orc parses SSE events, translates them to the existing socket.io message format, and forwards to the browser.
-- **Working directory:** Passed via `<env>` block in the system prompt; meridian's `extractClientCwd()` parses it.
-- **Config:** `~/.config/meridian/profiles.json` for provider profiles.
-- **Override:** Set `MERIDIAN_URL` env var to point to a different meridian instance.
+### Session Lifecycle Ownership
+
+**orcd (layer 3) owns session lifecycle.** The orc backend (layer 2) must not infer session state from SDK events like `result`. A `result` event means one agent turn completed, NOT that the session is done — background tasks (monitors, subagents) may still be running in the agent process.
+
+- orcd emits `session_exit` when the SDK iterator actually closes (all work done)
+- Orc backend reacts to `session_exit` to move cards to review
+- `result` is just another SDK event — used for turn counting and forwarding to the UI
+
+### Provider Routing
+
+Provider config lives in `~/.orc/config.yaml`. Each provider has `baseUrl`, `apiKey`, and `models`. orcd sets `ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY` env vars on the agent subprocess. KPP reads the API key to determine which account pool to route to. All providers work identically — no special cases.
 
 ## Code Style
 
@@ -51,7 +62,7 @@ This is a **purely event-driven system**. Every handler reacts to a single event
 - `src/server/init-state.ts` — holds WSS instance, initialization flag, and upgrade handler attachment. Always dynamically imported.
 - `src/server/ws/server.ts` — statically imported by `vite.config.ts` (exports `wsServerPlugin`). NO persistent state here.
 - On each `configureServer` call: REST middleware is re-wired (restApp closure), WSS upgrade handler is re-attached to the new httpServer. WSS creation, OC bus listeners, and OpenCode server start only happen once (guarded by `init-state.initialized`).
-- **SessionManager** also lives in a dynamically imported module and must survive restarts — it tracks active session IDs in memory. Meridian owns the actual agent sessions; SessionManager is lightweight (just in-memory session ID tracking).
+- **OrcdClient** also lives in a dynamically imported module and must survive restarts — it tracks active session IDs in memory. orcd owns the actual agent sessions; OrcdClient is lightweight (just connection + active session tracking).
 
 ## Dev Server
 
