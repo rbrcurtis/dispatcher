@@ -19,7 +19,7 @@ export class OrcdServer {
   constructor(
     private socketPath: string,
     private providers: Record<string, ProviderConfig>,
-    private defaults: { provider: string; model: string; effort?: string },
+    private defaults: { provider: string; model: string },
   ) {}
 
   start(): Promise<void> {
@@ -138,14 +138,12 @@ export class OrcdServer {
 
     this.send(client, { type: 'session_created', sessionId: session.id });
 
-    // Resolve effort: action > provider > global default
-    const effort = action.effort ?? providerCfg.effort ?? this.defaults.effort ?? 'high';
+    const effort = action.effort ?? 'high';
 
-    const env: Record<string, string> = {
+    const env = Object.assign({}, process.env, {
       ANTHROPIC_BASE_URL: providerCfg.baseUrl,
       ANTHROPIC_API_KEY: providerCfg.apiKey,
-      ...action.env,
-    };
+    }, action.env) as Record<string, string>;
 
     session.run({
       prompt: action.prompt,
@@ -172,10 +170,10 @@ export class OrcdServer {
     }
 
     const providerCfg = this.providers[session.provider];
-    const env: Record<string, string> = {
+    const env = Object.assign({}, process.env, {
       ANTHROPIC_BASE_URL: providerCfg?.baseUrl ?? '',
       ANTHROPIC_API_KEY: providerCfg?.apiKey ?? '',
-    };
+    }) as Record<string, string>;
 
     session.sendMessage(action.prompt, env).finally(() => {
       console.log(`[orcd] session ${session.id.slice(0, 8)} follow-up exited (state=${session.state})`);

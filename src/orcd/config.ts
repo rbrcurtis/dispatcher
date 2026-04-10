@@ -3,7 +3,6 @@ import { parse as parseYaml } from 'yaml';
 export interface ProviderConfig {
   baseUrl: string;
   apiKey: string;
-  effort?: string;
   models: string[];
 }
 
@@ -12,7 +11,6 @@ export interface OrcdConfig {
   defaultProvider: string;
   defaultModel: string;
   defaultCwd?: string;
-  defaultEffort?: string;
   providers: Record<string, ProviderConfig>;
 }
 
@@ -42,8 +40,7 @@ export function parseConfig(yamlStr: string, env: Record<string, string | undefi
     }
     providers[name] = {
       baseUrl: resolveEnvVars(String(p.baseUrl), env),
-      apiKey: resolveEnvVars(String(p.apiKey ?? 'dummy'), env),
-      effort: p.effort != null ? String(p.effort) : undefined,
+      apiKey: resolveEnvVars(String(p.apiKey ?? ''), env),
       models: (p.models as string[]).map(String),
     };
   }
@@ -53,7 +50,6 @@ export function parseConfig(yamlStr: string, env: Record<string, string | undefi
     defaultProvider: String(raw.defaultProvider ?? 'anthropic'),
     defaultModel: String(raw.defaultModel ?? 'claude-sonnet-4-6'),
     defaultCwd: raw.defaultCwd != null ? String(raw.defaultCwd) : undefined,
-    defaultEffort: raw.defaultEffort != null ? String(raw.defaultEffort) : undefined,
     providers,
   };
 }
