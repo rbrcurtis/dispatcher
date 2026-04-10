@@ -1,6 +1,5 @@
 import type { AckResponse } from '../../../shared/ws-protocol';
 import type { AppSocket } from '../types';
-import { readSessionHistory } from '../../sessions/jsonl-reader';
 import { busRoomBridge } from '../subscriptions';
 import { Card } from '../../models/Card';
 import { Project } from '../../models/Project';
@@ -22,12 +21,21 @@ export async function handleSessionLoad(
 
     let messages: unknown[] = [];
     const card = await Card.findOneBy({ id: cardId });
+
     if (card?.sessionId && card.projectId) {
       const proj = await Project.findOneBy({ id: card.projectId });
       if (proj) {
         const cwd = resolveWorkDir(card.worktreeBranch ?? null, proj.path);
-        messages = await readSessionHistory(card.sessionId, cwd);
-        console.log(`[session:load] cardId=${cardId} loaded ${messages.length} messages from JSONL`);
+        try {
+          const { getSessionMessages } = await import('@anthropic-ai/claude-agent-sdk');
+          const sessionMsgs = await getSessionMessages(card.sessionId, {
+            dir: cwd,
+          });
+          messages = sessionMsgs;
+          console.log(`[session:load] cardId=${cardId} loaded ${messages.length} messages via SDK`);
+        } catch (err) {
+          console.warn(`[session:load] cardId=${cardId} SDK getSessionMessages failed:`, err);
+        }
       }
     }
 
@@ -36,6 +44,15 @@ export async function handleSessionLoad(
       socket.join(room);
       busRoomBridge.ensureCardListeners(cardId);
       console.log(`[session:load] cardId=${cardId} joined room ${room}`);
+    }
+
+    // Subscribe to orcd for live events (if session is active)
+    if (card?.sessionId) {
+      const initState = await import('../../init-state');
+      const client = initState.getOrcdClient();
+      if (client?.isActive(card.sessionId)) {
+        client.subscribe(card.sessionId);
+      }
     }
 
     callback({ data: { messages } });
