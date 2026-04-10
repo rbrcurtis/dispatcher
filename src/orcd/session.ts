@@ -93,6 +93,7 @@ export class OrcdSession {
         allowDangerouslySkipPermissions: true,
         settingSources: ['user', 'project'],
         includePartialMessages: true,
+        pathToClaudeCodeExecutable: '/home/ryan/.local/bin/claude',
         env: opts.env,
         ...thinkingOpts,
       },
