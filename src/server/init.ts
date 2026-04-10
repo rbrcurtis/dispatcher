@@ -99,7 +99,7 @@ export async function initBackend(): Promise<{
   }
 
   // --- OC controllers + OrcdClient ---
-  const { registerAutoStart, registerWorktreeCleanup } = await import('./controllers/oc');
+  const { registerAutoStart, registerWorktreeCleanup } = await import('./controllers/card-sessions');
   const initState = await import('./init-state');
 
   let client = initState.getOrcdClient();

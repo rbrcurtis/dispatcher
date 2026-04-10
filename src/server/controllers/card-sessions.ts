@@ -60,16 +60,13 @@ export function registerCardSession(cardId: number, sessionId: string): void {
       const result = msg.result as Record<string, unknown>;
       messageBus.publish(`card:${cardId}:sdk`, result);
 
-      // Persist to DB
+      // Persist turn count (result = one turn done, but session may still be alive for background tasks)
       const card = await repo.findOneBy({ id: cardId });
       if (card) {
         card.turnsCompleted = (card.turnsCompleted ?? 0) + 1;
         card.updatedAt = new Date().toISOString();
         await repo.save(card);
       }
-
-      await handleSessionExit(cardId);
-      unregister();
     }
 
     if (msg.type === 'error') {
@@ -78,7 +75,10 @@ export function registerCardSession(cardId: number, sessionId: string): void {
         message: msg.error,
         timestamp: Date.now(),
       });
+    }
 
+    // Session actually exited (orcd iterator closed) — now move card to review
+    if (msg.type === 'session_exit') {
       await handleSessionExit(cardId);
       unregister();
     }

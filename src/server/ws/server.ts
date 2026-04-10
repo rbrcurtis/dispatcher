@@ -143,7 +143,7 @@ export function wsServerPlugin(): Plugin {
             if (initState.initialized) return;
 
             const { OrcdClient } = await import('../orcd-client');
-            const { registerAutoStart, registerWorktreeCleanup } = await import('../controllers/oc');
+            const { registerAutoStart, registerWorktreeCleanup } = await import('../controllers/card-sessions');
 
             let client = initState.getOrcdClient();
             if (!client) {

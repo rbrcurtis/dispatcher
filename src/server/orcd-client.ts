@@ -3,7 +3,6 @@ import { homedir } from 'os';
 import type {
   OrcdAction,
   OrcdMessage,
-  SessionCreatedMessage,
 } from '../shared/orcd-protocol';
 
 type MessageHandler = (msg: OrcdMessage) => void;
@@ -201,8 +200,8 @@ export class OrcdClient {
       }
     }
 
-    // Track session lifecycle
-    if (msg.type === 'result') {
+    // Track session lifecycle — only on actual exit, not on result
+    if (msg.type === 'session_exit') {
       this.activeSessions.delete(msg.sessionId);
     }
 

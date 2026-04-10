@@ -79,6 +79,12 @@ export interface SessionErrorMessage {
   error: string;
 }
 
+export interface SessionExitMessage {
+  type: 'session_exit';
+  sessionId: string;
+  state: 'completed' | 'errored' | 'stopped';
+}
+
 export interface SessionListMessage {
   type: 'session_list';
   sessions: Array<{
@@ -93,4 +99,5 @@ export type OrcdMessage =
   | StreamEventMessage
   | SessionResultMessage
   | SessionErrorMessage
+  | SessionExitMessage
   | SessionListMessage;

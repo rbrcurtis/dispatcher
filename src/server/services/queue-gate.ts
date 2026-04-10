@@ -123,6 +123,6 @@ async function processQueueImpl(projectId: number): Promise<void> {
   toStart.updatedAt = new Date().toISOString();
   await toStart.save();
 
-  const { registerCardSession } = await import('../controllers/oc');
+  const { registerCardSession } = await import('../controllers/card-sessions');
   registerCardSession(toStart.id, sessionId);
 }
