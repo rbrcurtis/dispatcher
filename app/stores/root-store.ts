@@ -1,4 +1,4 @@
-import { makeAutoObservable } from 'mobx';
+import { makeAutoObservable, runInAction } from 'mobx';
 import { WsClient } from '../lib/ws-client';
 import { CardStore } from './card-store';
 import { ConfigStore } from './config-store';
@@ -71,7 +71,15 @@ export class RootStore {
   }
 
   subscribe(columns: string[]) {
-    this.ws.subscribe(columns as Column[]);
+    this.ws.subscribe(columns as Column[]).then((data) => {
+      if (!data) return;
+      runInAction(() => {
+        this.currentUser = data.user ?? null;
+        this.cards.hydrate(data.cards, true);
+        this.projects.hydrate(data.projects, true, data.users);
+        this.config.hydrate(data.providers);
+      });
+    });
   }
 
   dispose() {

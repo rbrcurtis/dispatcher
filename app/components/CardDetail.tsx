@@ -49,6 +49,7 @@ type Draft = {
   projectId: number | null;
   worktreeBranch: string | null;
   sourceBranch: string | null;
+  provider: string;
   model: string;
   thinkingLevel: 'off' | 'low' | 'medium' | 'high';
 };
@@ -82,6 +83,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
     projectId: null,
     worktreeBranch: null,
     sourceBranch: null,
+    provider: 'anthropic',
     model: 'sonnet',
     thinkingLevel: 'high',
   });
@@ -105,6 +107,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
       projectId: card.projectId,
       worktreeBranch: card.worktreeBranch,
       sourceBranch: card.sourceBranch,
+      provider: card.provider ?? cardProject?.providerID ?? 'anthropic',
       model: card.model,
       thinkingLevel: card.thinkingLevel,
     });
@@ -134,6 +137,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
       projectId: card.projectId,
       worktreeBranch: card.worktreeBranch,
       sourceBranch: card.sourceBranch,
+      provider: card.provider ?? d.provider,
       model: card.model,
       thinkingLevel: card.thinkingLevel,
     }));
@@ -578,13 +582,15 @@ export const NewCardDetail = observer(function NewCardDetail({
     if (initialProjectId != null) {
       const proj = projectStore.getProject(initialProjectId);
       if (proj) {
+        const prov = proj.providerID ?? 'anthropic';
         return {
           title: '',
           description: '',
           projectId: initialProjectId,
           worktreeBranch: null,  // can't slugify empty title; server auto-sets if project.defaultWorktree
           sourceBranch: null,
-          model: proj.defaultModel ?? 'sonnet',
+          provider: prov,
+          model: proj.defaultModel ?? config.getDefaultModel(prov),
           thinkingLevel: proj.defaultThinkingLevel ?? 'high',
         };
       }
@@ -595,6 +601,7 @@ export const NewCardDetail = observer(function NewCardDetail({
       projectId: null,
       worktreeBranch: null,  // can't slugify empty title; server auto-sets if project.defaultWorktree
       sourceBranch: null,
+      provider: 'anthropic',
       model: 'sonnet',
       thinkingLevel: 'high',
     };
@@ -625,6 +632,7 @@ export const NewCardDetail = observer(function NewCardDetail({
         projectId: draft.projectId,
         worktreeBranch: draft.worktreeBranch,
         sourceBranch: draft.sourceBranch as 'main' | 'dev' | null | undefined,
+        provider: draft.provider,
         model: draft.model,
         thinkingLevel: draft.thinkingLevel,
       });
@@ -716,14 +724,18 @@ export const NewCardDetail = observer(function NewCardDetail({
               onValueChange={(val) => {
                 const pid = val === '__none__' ? null : Number(val);
                 const proj = pid != null ? projectStore.getProject(pid) : undefined;
-                setDraft((d) => ({
-                  ...d,
-                  projectId: pid,
-                  worktreeBranch: proj?.isGitRepo && proj.defaultWorktree ? (slugify(d.title) || null) : null,
-                  sourceBranch: null,
-                  model: proj?.defaultModel ?? d.model,
-                  thinkingLevel: proj?.defaultThinkingLevel ?? d.thinkingLevel,
-                }));
+                setDraft((d) => {
+                  const prov = proj?.providerID ?? d.provider;
+                  return {
+                    ...d,
+                    projectId: pid,
+                    worktreeBranch: proj?.isGitRepo && proj.defaultWorktree ? (slugify(d.title) || null) : null,
+                    sourceBranch: null,
+                    provider: prov,
+                    model: proj?.defaultModel ?? config.getDefaultModel(prov),
+                    thinkingLevel: proj?.defaultThinkingLevel ?? d.thinkingLevel,
+                  };
+                });
                 onColorChange?.(proj?.color ?? null);
               }}
             >
@@ -781,21 +793,42 @@ export const NewCardDetail = observer(function NewCardDetail({
           )}
 
           {selectedProject && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Provider</label>
+                <Select
+                  value={draft.provider}
+                  onValueChange={(val) => {
+                    const firstModel = config.getDefaultModel(val);
+                    setDraft((d) => ({ ...d, provider: val, model: firstModel, thinkingLevel: 'high' }));
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent position="popper" className="max-h-60">
+                    {config.allProviders.map(([id, p]) => (
+                      <SelectItem key={id} value={id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Model</label>
                 <Select
-                  key={selectedProject.providerID}
+                  key={draft.provider}
                   value={draft.model}
                   onValueChange={(val) => setDraft((d) => ({ ...d, model: val }))}
                 >
                   <SelectTrigger className="w-full">
                     <span data-slot="select-value">
-                      {config.getModel(selectedProject.providerID ?? 'anthropic', draft.model)?.label ?? draft.model}
+                      {config.getModel(draft.provider, draft.model)?.label ?? draft.model}
                     </span>
                   </SelectTrigger>
                   <SelectContent position="popper" className="max-h-60">
-                    {config.getModels(selectedProject.providerID ?? 'anthropic').map(([alias, m]) => (
+                    {config.getModels(draft.provider).map(([alias, m]) => (
                       <SelectItem key={alias} value={alias}>
                         {m.label}
                       </SelectItem>

@@ -143,6 +143,7 @@ export class OrcdServer {
     const env = Object.assign({}, process.env, {
       ANTHROPIC_BASE_URL: providerCfg.baseUrl,
       ANTHROPIC_API_KEY: providerCfg.apiKey,
+      ...(providerCfg.authToken ? { ANTHROPIC_AUTH_TOKEN: providerCfg.authToken } : {}),
     }, action.env) as Record<string, string>;
 
     session.run({
@@ -173,6 +174,7 @@ export class OrcdServer {
     const env = Object.assign({}, process.env, {
       ANTHROPIC_BASE_URL: providerCfg?.baseUrl ?? '',
       ANTHROPIC_API_KEY: providerCfg?.apiKey ?? '',
+      ...(providerCfg?.authToken ? { ANTHROPIC_AUTH_TOKEN: providerCfg.authToken } : {}),
     }) as Record<string, string>;
 
     session.sendMessage(action.prompt, env).finally(() => {

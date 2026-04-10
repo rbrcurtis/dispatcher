@@ -3,6 +3,7 @@ import { parse as parseYaml } from 'yaml';
 export interface ProviderConfig {
   baseUrl: string;
   apiKey: string;
+  authToken?: string;
   models: string[];
 }
 
@@ -41,6 +42,7 @@ export function parseConfig(yamlStr: string, env: Record<string, string | undefi
     providers[name] = {
       baseUrl: resolveEnvVars(String(p.baseUrl), env),
       apiKey: resolveEnvVars(String(p.apiKey ?? ''), env),
+      ...(p.authToken ? { authToken: resolveEnvVars(String(p.authToken), env) } : {}),
       models: (p.models as string[]).map(String),
     };
   }
