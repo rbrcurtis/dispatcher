@@ -34,14 +34,13 @@ async function processQueueImpl(projectId: number): Promise<void> {
   );
 
   const initState = await import('../init-state');
-  const sm = initState.getSessionManager();
-  const activeCard = group.find((c) => sm?.isActive(c.id) ?? false);
+  const client = initState.getOrcdClient();
+  const activeCard = group.find((c) => !!(c.sessionId && client?.isActive(c.sessionId)));
 
   if (activeCard) {
-    const s = sm?.get(activeCard.id);
     console.log(
       `[queue-gate] project=${projectId}: card #${activeCard.id} active ` +
-        `(status=${s?.status}, sid=${s?.sessionId ?? 'none'}), renumbering queue`,
+        `(sid=${activeCard.sessionId ?? 'none'}), renumbering queue`,
     );
 
     if (activeCard.queuePosition != null) {
@@ -100,7 +99,7 @@ async function processQueueImpl(projectId: number): Promise<void> {
     }
   }
 
-  if (!sm) throw new Error('SessionManager not initialized');
+  if (!client) throw new Error('OrcdClient not initialized');
 
   console.log(`[queue-gate] project=${projectId}: launching session for card #${toStart.id}`);
   const prompt = toStart.pendingPrompt ?? (toStart.sessionId ? '' : toStart.description ?? '');
@@ -109,12 +108,21 @@ async function processQueueImpl(projectId: number): Promise<void> {
   toStart.updatedAt = new Date().toISOString();
   await toStart.save();
 
-  await sm.start(toStart.id, prompt, {
+  const { ensureWorktree } = await import('../sessions/worktree');
+  const cwd = await ensureWorktree(toStart);
+
+  const sessionId = await client.create({
+    prompt,
+    cwd,
     provider: toStart.provider,
     model: toStart.model,
-    resume: toStart.sessionId ?? undefined,
+    sessionId: toStart.sessionId ?? undefined,
   });
 
+  toStart.sessionId = sessionId;
+  toStart.updatedAt = new Date().toISOString();
+  await toStart.save();
+
   const { registerCardSession } = await import('../controllers/oc');
-  registerCardSession(toStart.id);
+  registerCardSession(toStart.id, sessionId);
 }

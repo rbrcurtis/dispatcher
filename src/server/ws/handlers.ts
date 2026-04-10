@@ -129,9 +129,6 @@ export function registerSocketEvents(socket: AppSocket, io: AppServer): void {
   socket.on('session:set-model', async (data, callback) => {
     const { cardId, provider, model } = data;
     try {
-      const initState = await import('../init-state');
-      const sm = initState.getSessionManager();
-      sm?.setModel(cardId, provider, model);
       const { Card } = await import('../models/Card');
       const card = await Card.findOneBy({ id: cardId });
       if (card) {

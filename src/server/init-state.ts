@@ -4,13 +4,13 @@ import type { Server as IoServer } from 'socket.io'
 
 type AnyHttpServer = HttpServer | Http2SecureServer
 
-/** SessionManager — survives Vite restarts. */
-import type { SessionManager } from './sessions/manager'
-let _sessionManager: SessionManager | null = null
-export function getSessionManager(): SessionManager | null { return _sessionManager }
-export function setSessionManager(sm: SessionManager): void { _sessionManager = sm }
+/** OrcdClient — survives Vite restarts. */
+import type { OrcdClient } from './orcd-client'
+let _orcdClient: OrcdClient | null = null
+export function getOrcdClient(): OrcdClient | null { return _orcdClient }
+export function setOrcdClient(client: OrcdClient): void { _orcdClient = client }
 
-/** True after IO server, bus listeners, and SessionManager are initialized. */
+/** True after IO server, bus listeners, and OrcdClient are initialized. */
 export let initialized = false
 export function markInitialized() { initialized = true }
 

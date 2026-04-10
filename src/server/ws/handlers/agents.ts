@@ -1,7 +1,8 @@
 import type { AckResponse } from '../../../shared/ws-protocol';
 import { Card } from '../../models/Card';
-import { registerCardSession } from '../../controllers/oc';
 import { buildPromptWithFiles } from '../../sessions/manager';
+import { registerCardSession } from '../../controllers/oc';
+import { ensureWorktree } from '../../sessions/worktree';
 
 export async function handleAgentSend(
   data: { cardId: number; message: string; files?: Array<{ id: string; name: string; mimeType: string; path: string; size: number }> },
@@ -11,36 +12,41 @@ export async function handleAgentSend(
   console.log(`[session:${cardId}] agent:send, len=${message.length}`);
 
   try {
-    // Ack immediately — session start is async
     callback({});
 
     const initState = await import('../../init-state');
-    const sm = initState.getSessionManager();
-    if (!sm) throw new Error('SessionManager not initialized');
+    const client = initState.getOrcdClient();
+    if (!client) throw new Error('OrcdClient not initialized');
 
     const card = await Card.findOneByOrFail({ id: cardId });
     const prompt = buildPromptWithFiles(message, files);
 
-    if (sm.isActive(cardId)) {
-      sm.sendFollowUp(cardId, prompt);
+    if (card.sessionId && client.isActive(card.sessionId)) {
+      // Follow-up to active session
+      client.message(card.sessionId, prompt);
     } else {
-      // Start session BEFORE updating column — prevents auto-start race
-      await sm.start(cardId, prompt, {
+      // New session or resume
+      const cwd = await ensureWorktree(card);
+      const sessionId = await client.create({
+        prompt,
+        cwd,
         provider: card.provider,
         model: card.model,
-        resume: card.sessionId ?? undefined,
+        sessionId: card.sessionId ?? undefined,
       });
-      registerCardSession(cardId);
+
+      card.sessionId = sessionId;
+      registerCardSession(cardId, sessionId);
+
       if (card.column !== 'running') {
         card.column = 'running';
-        card.updatedAt = new Date().toISOString();
-        await card.save();
       }
+      card.updatedAt = new Date().toISOString();
+      await card.save();
     }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error(`[session:${cardId}] agent:send error:`, error);
-    // Can't send error via callback (already called). Error surfaces via agent:status.
   }
 }
 
@@ -50,13 +56,13 @@ export async function handleAgentCompact(
 ): Promise<void> {
   const { cardId } = data;
   console.log(`[session:${cardId}] agent:compact received`);
-
   try {
     callback({});
     const initState = await import('../../init-state');
-    const sm = initState.getSessionManager();
-    if (sm?.isActive(cardId)) {
-      sm.sendFollowUp(cardId, 'Please compact your context window. Summarize the conversation so far and continue.');
+    const client = initState.getOrcdClient();
+    const card = await Card.findOneBy({ id: cardId });
+    if (client && card?.sessionId && client.isActive(card.sessionId)) {
+      client.message(card.sessionId, 'Please compact your context window. Summarize the conversation so far and continue.');
     }
   } catch (err) {
     console.error(`[session:${cardId}] agent:compact error:`, err);
@@ -71,8 +77,11 @@ export async function handleAgentStop(
   console.log(`[session:${cardId}] agent:stop received`);
   callback({});
   const initState = await import('../../init-state');
-  const sm = initState.getSessionManager();
-  sm?.stop(cardId);
+  const client = initState.getOrcdClient();
+  const card = await Card.findOneBy({ id: cardId });
+  if (client && card?.sessionId) {
+    client.cancel(card.sessionId);
+  }
 }
 
 export async function handleAgentStatus(
@@ -83,38 +92,27 @@ export async function handleAgentStatus(
   const { cardId } = data;
   try {
     const initState = await import('../../init-state');
-    const sm = initState.getSessionManager();
-    const session = sm?.get(cardId);
+    const client = initState.getOrcdClient();
+    const card = await Card.findOneBy({ id: cardId });
 
-    if (session) {
-      socket.emit('agent:status', {
-        cardId,
-        active: sm!.isActive(cardId),
-        status: session.status,
-        sessionId: session.sessionId,
-        promptsSent: session.promptsSent,
-        turnsCompleted: session.turnsCompleted,
-        contextTokens: 0,
-        contextWindow: 200_000,
-      });
-    } else {
-      const card = await Card.findOneBy({ id: cardId });
-      if (card && card.column === 'running' && card.queuePosition == null) {
-        card.column = 'review';
-        card.updatedAt = new Date().toISOString();
-        await card.save();
-      }
-      socket.emit('agent:status', {
-        cardId,
-        active: false,
-        status: 'completed',
-        sessionId: card?.sessionId ?? null,
-        promptsSent: card?.promptsSent ?? 0,
-        turnsCompleted: card?.turnsCompleted ?? 0,
-        contextTokens: card?.contextTokens ?? 0,
-        contextWindow: card?.contextWindow ?? 200_000,
-      });
+    const active = !!(card?.sessionId && client?.isActive(card.sessionId));
+
+    if (!active && card && card.column === 'running' && card.queuePosition == null) {
+      card.column = 'review';
+      card.updatedAt = new Date().toISOString();
+      await card.save();
     }
+
+    socket.emit('agent:status', {
+      cardId,
+      active,
+      status: active ? 'running' : 'completed',
+      sessionId: card?.sessionId ?? null,
+      promptsSent: card?.promptsSent ?? 0,
+      turnsCompleted: card?.turnsCompleted ?? 0,
+      contextTokens: card?.contextTokens ?? 0,
+      contextWindow: card?.contextWindow ?? 200_000,
+    });
     callback({});
   } catch (err) {
     callback({ error: String(err instanceof Error ? err.message : err) });

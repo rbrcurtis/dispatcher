@@ -139,21 +139,22 @@ export function wsServerPlugin(): Plugin {
               console.log('[ws] Socket.IO server created');
             }
 
-            // --- One-time init: SessionManager + controller listeners ---
+            // --- One-time init: OrcdClient + controller listeners ---
             if (initState.initialized) return;
 
-            const { SessionManager } = await import('../sessions/manager');
+            const { OrcdClient } = await import('../orcd-client');
             const { registerAutoStart, registerWorktreeCleanup } = await import('../controllers/oc');
 
-            let sm = initState.getSessionManager();
-            if (!sm) {
-              sm = new SessionManager();
-              initState.setSessionManager(sm);
+            let client = initState.getOrcdClient();
+            if (!client) {
+              client = new OrcdClient();
+              await client.connect();
+              initState.setOrcdClient(client);
             }
 
             registerAutoStart();
             registerWorktreeCleanup();
-            console.log('[sessions] SessionManager initialized, controller listeners registered');
+            console.log('[orcd] OrcdClient connected, controller listeners registered');
 
             initState.markInitialized();
 

@@ -98,20 +98,21 @@ export async function initBackend(): Promise<{
     console.log('[ws] Socket.IO server attached');
   }
 
-  // --- OC controllers + SessionManager ---
+  // --- OC controllers + OrcdClient ---
   const { registerAutoStart, registerWorktreeCleanup } = await import('./controllers/oc');
   const initState = await import('./init-state');
 
-  let sm = initState.getSessionManager();
-  if (!sm) {
-    const { SessionManager } = await import('./sessions/manager');
-    sm = new SessionManager();
-    initState.setSessionManager(sm);
+  let client = initState.getOrcdClient();
+  if (!client) {
+    const { OrcdClient } = await import('./orcd-client');
+    client = new OrcdClient();
+    await client.connect();
+    initState.setOrcdClient(client);
   }
 
   registerAutoStart();
   registerWorktreeCleanup();
-  console.log('[oc] controller listeners registered');
+  console.log('[orcd] OrcdClient connected, controller listeners registered');
 
   // Move stale running cards to review
   try {
