@@ -76,6 +76,16 @@ describe('applySelectCard', () => {
     expect(flashIndex).toBe(1);
   });
 
+  it('does not treat "all" pinned slot as project-specific for override placement', () => {
+    const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 'all' }];
+    const cards = [makeCard({ id: 1, projectId: 10, column: 'done' })];
+    const resolved = new Map<number, number>();
+    // "all" slots don't match a specific projectId, so card goes to slot 0 fallback
+    const { slots: next, flashIndex } = applySelectCard(slots, 1, cards, resolved);
+    expect(next[0]).toEqual({ type: 'manual', cardId: 1 });
+    expect(flashIndex).toBe(0);
+  });
+
   it('does not use a pinned slot as a fallback empty slot for different project', () => {
     const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 20 }];
     const cards = [makeCard({ id: 1, projectId: 10 })];
@@ -179,6 +189,13 @@ describe('applyDropCard', () => {
     expect(next[2]).toEqual({ type: 'manual', cardId: 1 });
   });
 
+  it('converts to manual when dropping onto an "all" pinned slot', () => {
+    const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 'all' }];
+    const { slots: next } = applyDropCard(slots, 1, 5, 10);
+    // "all" pin has no specific projectId to match, so becomes manual
+    expect(next[1]).toEqual({ type: 'manual', cardId: 5 });
+  });
+
   it('does not touch a resolver-picked pinned slot (no stored cardId) when its card is moved', () => {
     // Slot 1 is pinned but card 1 was shown there by the resolver (not stored).
     // Dropping card 1 elsewhere should leave slot 1 untouched — resolver will refill naturally.
@@ -253,6 +270,11 @@ describe('applyPinSlot', () => {
     const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 10, cardId: 5 }];
     expect(applyPinSlot(slots, 1, 10)[1]).toEqual({ type: 'pinned', projectId: 10 }); // override gone
   });
+
+  it('pins a slot to "all" projects', () => {
+    const slots: SlotState[] = [{ type: 'empty' }, { type: 'empty' }];
+    expect(applyPinSlot(slots, 1, 'all')[1]).toEqual({ type: 'pinned', projectId: 'all' });
+  });
 });
 
 // ─── applyOnCardCreated ──────────────────────────────────────────────────────
@@ -288,6 +310,13 @@ describe('applyOnCardCreated', () => {
     const { slots: next, flashIndex } = applyOnCardCreated(slots, 1, 10);
     expect(next).toBe(slots);
     expect(flashIndex).toBeNull();
+  });
+
+  it('places card in slot 0 when only an "all" pin exists (not project-specific)', () => {
+    const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 'all' }];
+    const { slots: next, flashIndex } = applyOnCardCreated(slots, 1, 10);
+    expect(next[0]).toEqual({ type: 'manual', cardId: 1 });
+    expect(flashIndex).toBe(0);
   });
 });
 

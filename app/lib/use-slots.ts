@@ -1,6 +1,6 @@
 // app/lib/use-slots.ts
 import { useState, useEffect, useRef } from 'react';
-import { resolvePinnedCards, type SlotState } from './resolve-pin';
+import { resolvePinnedCards, type SlotState, type PinTarget } from './resolve-pin';
 import type { Card } from '../../src/shared/ws-protocol';
 
 // ─── localStorage helpers ────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ export function applyUnpinSlot(slots: SlotState[], index: number): SlotState[] {
   return next;
 }
 
-export function applyPinSlot(slots: SlotState[], index: number, projectId: number): SlotState[] {
+export function applyPinSlot(slots: SlotState[], index: number, projectId: PinTarget): SlotState[] {
   if (index === 0) return slots;
   const next = [...slots];
   next[index] = { type: 'pinned', projectId };
@@ -220,7 +220,7 @@ export function applyColumnCountChange(slots: SlotState[], newCount: number): Sl
 export type UseSlotsResult = {
   slots: SlotState[];
   resolvedCards: Map<number, number>;
-  pinSlot: (index: number, projectId: number) => void;
+  pinSlot: (index: number, projectId: PinTarget) => void;
   closeSlot: (index: number) => void;
   unpinSlot: (index: number) => void;
   selectCard: (cardId: number) => void;
@@ -284,7 +284,7 @@ export function useSlots(columnCount: number, cards: Card[]): UseSlotsResult {
     prevResolvedRef.current = resolvedCards;
   });
 
-  function pinSlot(index: number, projectId: number) {
+  function pinSlot(index: number, projectId: PinTarget) {
     const next = applyPinSlot(slots, index, projectId);
     if (next === slots) return;
     setSlots(next);
