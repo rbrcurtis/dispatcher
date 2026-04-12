@@ -1,8 +1,6 @@
 import { Card } from '../models/Card';
-import { Project } from '../models/Project';
 import { messageBus, type MessageBus } from '../bus';
 import { AppDataSource } from '../models/index';
-import { processQueue } from '../services/queue-gate';
 import type { OrcdMessage } from '../../shared/orcd-protocol';
 
 /**
@@ -122,14 +120,6 @@ async function handleSessionExit(cardId: number): Promise<void> {
     await repo.save(card);
   }
 
-  // Process queue for non-worktree cards
-  const freshCard = await repo.findOneBy({ id: cardId });
-  if (freshCard && !freshCard.worktreeBranch && freshCard.projectId) {
-    processQueue(freshCard.projectId).catch((err) => {
-      console.error(`[oc:${cardId}] processQueue failed on exit:`, err);
-    });
-  }
-
   messageBus.publish(`card:${cardId}:exit`, {
     sessionId: card?.sessionId,
     status: 'completed',
@@ -157,32 +147,13 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       // Check if already active in orcd
       if (fullCard.sessionId && client.isActive(fullCard.sessionId)) return;
 
-      // Non-worktree cards on git repos: delegate to queue processing
-      if (!fullCard.worktreeBranch && fullCard.projectId) {
-        const proj = await Project.findOneBy({ id: fullCard.projectId });
-        if (proj?.isGitRepo) {
-          console.log(
-            `[oc:auto-start] card #${card.id} entered running ` +
-              `(non-worktree, project=${card.projectId}, qP=${card.queuePosition})`,
-          );
-          processQueue(fullCard.projectId).catch((err) => {
-            console.error(`[oc:auto-start] processQueue failed for card #${card.id}:`, err);
-          });
-          return;
-        }
-      }
-
-      // Direct start (worktree or no project)
       console.log(
         `[oc:auto-start] card #${card.id} entered running ` +
           `(worktree=${!!card.worktreeBranch}, project=${card.projectId})`,
       );
       const { ensureWorktree } = await import('../sessions/worktree');
       const cwd = await ensureWorktree(fullCard);
-      const prompt = fullCard.pendingPrompt ?? (fullCard.sessionId ? '' : fullCard.description ?? '');
-      fullCard.pendingPrompt = null;
-      fullCard.pendingFiles = null;
-      await repo().save(fullCard);
+      const prompt = fullCard.sessionId ? '' : fullCard.description ?? '';
 
       const sessionId = await client.create({
         prompt,
@@ -207,19 +178,6 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       if (card.sessionId) {
         client?.cancel(card.sessionId);
       }
-
-      if (!card.worktreeBranch && card.projectId) {
-        const proj = await Project.findOneBy({ id: card.projectId });
-        if (proj?.isGitRepo) {
-          console.log(
-            `[oc:auto-start] card #${card.id} left running → ${newColumn} ` +
-              `(project=${card.projectId}), processing queue`,
-          );
-          processQueue(card.projectId).catch((err) => {
-            console.error(`[oc:auto-start] processQueue failed for project ${card.projectId}:`, err);
-          });
-        }
-      }
     }
   });
 }
@@ -238,6 +196,7 @@ export function registerWorktreeCleanup(bus: MessageBus = messageBus): void {
     if (!c.worktreeBranch || !c.projectId) return;
 
     try {
+      const { Project } = await import('../models/Project');
       const proj = await Project.findOneBy({ id: c.projectId });
       if (!proj) return;
 
