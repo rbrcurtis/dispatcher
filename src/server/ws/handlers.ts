@@ -19,7 +19,6 @@ import {
 } from './handlers/projects';
 import { handleSessionLoad } from './handlers/sessions';
 import { handleAgentSend, handleAgentCompact, handleAgentStop, handleAgentStatus } from './handlers/agents';
-import { handleQueueReorder } from './handlers/queue';
 import type { Card, Column, Project } from '../../shared/ws-protocol';
 
 export function registerSocketEvents(socket: AppSocket, io: AppServer): void {
@@ -142,9 +141,6 @@ export function registerSocketEvents(socket: AppSocket, io: AppServer): void {
       callback({ error: String(err instanceof Error ? err.message : err) });
     }
   });
-
-  // ── Queue ────────────────────────────────────────────────────────────────
-  socket.on('queue:reorder', (data, cb) => void handleQueueReorder(data, cb));
 
   // ── Disconnect ───────────────────────────────────────────────────────────
   socket.on('disconnect', () => {

@@ -163,7 +163,6 @@ export function wsServerPlugin(): Plugin {
               const { Card } = await import('../models/Card');
               const cards = await Card.find({ where: { column: 'running' } });
               for (const card of cards) {
-                if (card.queuePosition != null) continue;
                 card.column = 'review';
                 card.updatedAt = new Date().toISOString();
                 await card.save();
