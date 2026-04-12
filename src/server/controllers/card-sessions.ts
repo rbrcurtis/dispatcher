@@ -26,10 +26,14 @@ export function untrackSession(sessionId: string): void {
  * Routes messages by looking up sessionId → cardId in the map.
  * Call once at startup — survives for the process lifetime.
  */
+let routerInitialized = false;
+
 export function initOrcdRouter(
   client: OrcdClient,
   bus: MessageBus = messageBus,
 ): void {
+  if (routerInitialized) return;
+  routerInitialized = true;
   const repo = () => AppDataSource.getRepository(Card);
 
   client.onMessage(async (msg: OrcdMessage) => {

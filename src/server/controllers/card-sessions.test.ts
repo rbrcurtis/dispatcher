@@ -28,6 +28,7 @@ describe('orcd message router', () => {
   };
 
   beforeEach(() => {
+    vi.resetModules();
     bus = new MessageBus();
     handler = null;
     mockClient.onMessage.mockClear();
