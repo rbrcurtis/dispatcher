@@ -15,7 +15,7 @@
 
 - Review cards rank above running cards
 - Review cards sorted oldest `createdAt` first
-- Running cards sorted: active session first (queuePosition == null), then queued cards by `queuePosition` ascending — ties within each group broken by newest `updatedAt` first
+- Running cards sorted newest `updatedAt` first
 
 ## R4. Multi-slot distribution
 
