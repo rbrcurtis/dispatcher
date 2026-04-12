@@ -4,9 +4,9 @@ import type { Query, Options } from '@anthropic-ai/claude-agent-sdk';
 import { AUTO_COMPACT_RATIO } from '../shared/constants';
 import { RingBuffer } from './ring-buffer';
 import type { SessionState } from './types';
-import type { StreamEventMessage, SessionErrorMessage, SessionResultMessage, SessionExitMessage } from '../shared/orcd-protocol';
+import type { StreamEventMessage, SessionErrorMessage, SessionResultMessage, SessionExitMessage, ContextUsageMessage } from '../shared/orcd-protocol';
 
-export type SessionEventCallback = (msg: StreamEventMessage | SessionResultMessage | SessionErrorMessage | SessionExitMessage) => void;
+export type SessionEventCallback = (msg: StreamEventMessage | SessionResultMessage | SessionErrorMessage | SessionExitMessage | ContextUsageMessage) => void;
 
 /**
  * Map effort string to SDK options for thinking/effort.
@@ -129,6 +129,22 @@ export class OrcdSession {
             result: sdkEvent,
           };
           for (const cb of this.subscribers) cb(msg);
+
+          // Fetch accurate context usage from SDK after each turn
+          if (this.activeQuery) {
+            try {
+              const usage = await this.activeQuery.getContextUsage();
+              const cuMsg: ContextUsageMessage = {
+                type: 'context_usage',
+                sessionId: this.id,
+                contextTokens: usage.totalTokens,
+                contextWindow: usage.rawMaxTokens,
+              };
+              for (const cb of this.subscribers) cb(cuMsg);
+            } catch {
+              // Query may have closed between result and this call — safe to ignore
+            }
+          }
         } else {
           const msg: StreamEventMessage = {
             type: 'stream_event',
