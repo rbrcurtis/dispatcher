@@ -69,6 +69,20 @@ export function registerCardSession(cardId: number, sessionId: string): void {
       }
     }
 
+    if (msg.type === 'context_usage') {
+      const card = await repo.findOneBy({ id: cardId });
+      if (card) {
+        card.contextTokens = msg.contextTokens;
+        card.contextWindow = msg.contextWindow;
+        card.updatedAt = new Date().toISOString();
+        await repo.save(card);
+      }
+      messageBus.publish(`card:${cardId}:context`, {
+        contextTokens: msg.contextTokens,
+        contextWindow: msg.contextWindow,
+      });
+    }
+
     if (msg.type === 'error') {
       messageBus.publish(`card:${cardId}:sdk`, {
         type: 'error',
