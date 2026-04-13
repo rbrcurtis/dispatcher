@@ -23,37 +23,8 @@ export function registerCardSession(cardId: number, sessionId: string): void {
     if (!('sessionId' in msg) || msg.sessionId !== sessionId) return;
 
     if (msg.type === 'stream_event') {
-      const sdkEvent = msg.event as Record<string, unknown>;
-
-      // Forward to messageBus for Socket.IO bridge
-      messageBus.publish(`card:${cardId}:sdk`, sdkEvent);
-
-      // Handle system messages
-      if (sdkEvent.type === 'system') {
-        const sys = sdkEvent as { subtype?: string; session_id?: string };
-
-        // Session init: persist sessionId
-        if (sys.subtype === 'init' && sys.session_id) {
-          const card = await repo.findOneBy({ id: cardId });
-          if (card && (!card.sessionId || card.sessionId.startsWith('msg_'))) {
-            card.sessionId = sys.session_id;
-            card.updatedAt = new Date().toISOString();
-            await repo.save(card);
-            console.log(`[oc:${cardId}] init: persisted sessionId=${sys.session_id}`);
-          }
-        }
-
-        // Compact boundary: reset context tokens
-        if (sys.subtype === 'compact_boundary') {
-          const card = await repo.findOneBy({ id: cardId });
-          if (card) {
-            card.contextTokens = 0;
-            card.updatedAt = new Date().toISOString();
-            await repo.save(card);
-            console.log(`[oc:${cardId}] compact_boundary: reset contextTokens to 0`);
-          }
-        }
-      }
+      // Forward pi AgentEvent to messageBus for Socket.IO bridge
+      messageBus.publish(`card:${cardId}:sdk`, msg.event as Record<string, unknown>);
     }
 
     if (msg.type === 'result') {
