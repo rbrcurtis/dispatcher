@@ -141,11 +141,15 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       const cwd = await ensureWorktree(fullCard);
       const prompt = fullCard.sessionId ? '' : fullCard.description ?? '';
 
+      const { getModelConfig } = await import('../config/providers');
+      const modelCfg = getModelConfig(fullCard.provider, fullCard.model);
+      const modelId = modelCfg?.modelID ?? fullCard.model;
+
       const sessionId = await client.create({
         prompt,
         cwd,
         provider: fullCard.provider,
-        model: fullCard.model,
+        model: modelId,
         sessionId: fullCard.sessionId ?? undefined,
         contextWindow: fullCard.contextWindow,
       });

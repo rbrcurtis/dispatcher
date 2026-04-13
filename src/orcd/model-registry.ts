@@ -1,4 +1,5 @@
 import type { Model, Api, Provider } from '@oh-my-pi/pi-ai';
+import { enrichModelThinking } from '@oh-my-pi/pi-ai';
 import type { ProviderConfig } from './config';
 
 const KNOWN_CONTEXT_WINDOWS: Record<string, number> = {
@@ -32,7 +33,7 @@ export function resolveModel(modelId: string, providerName: string, providerConf
   const provider: Provider = api === 'anthropic-messages' ? 'anthropic' : providerName;
   const reasoning = /^claude-(opus|sonnet)-4/.test(modelId);
 
-  return {
+  const base: Model = {
     id: modelId,
     name: modelId,
     api,
@@ -44,4 +45,7 @@ export function resolveModel(modelId: string, providerName: string, providerConf
     contextWindow: KNOWN_CONTEXT_WINDOWS[modelId] ?? 200_000,
     maxTokens: KNOWN_MAX_TOKENS[modelId] ?? 16_384,
   };
+
+  // Attach canonical thinking metadata so pi-ai can compute thinking budgets
+  return enrichModelThinking(base) as Model;
 }

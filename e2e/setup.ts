@@ -49,12 +49,13 @@ export async function setupE2E(): Promise<{
   const sync = await subscribe(socket);
 
   // 4. Create "Test" project via Socket.IO
+  // Use 'trackable' provider -- local proxy at 127.0.0.1:3457 with a real API key
   testProject = await emit<Project>(socket, 'project:create', {
     name: 'Test',
     path: TEST_REPO_DIR,
     defaultModel: 'sonnet',
     defaultThinkingLevel: 'off',
-    providerID: 'anthropic',
+    providerID: 'trackable',
     defaultWorktree: true,
     defaultBranch: 'main',
   });

@@ -10,11 +10,16 @@ export function createWorktree(
   // Resolve to remote ref for branches like "dev" or "main"
   let resolvedSource = sourceBranch;
   if (sourceBranch && !sourceBranch.includes('/')) {
-    execFileSync('git', ['fetch', 'origin', sourceBranch], {
-      cwd: repoPath,
-      stdio: 'pipe',
-    });
-    resolvedSource = `origin/${sourceBranch}`;
+    try {
+      execFileSync('git', ['fetch', 'origin', sourceBranch], {
+        cwd: repoPath,
+        stdio: 'pipe',
+      });
+      resolvedSource = `origin/${sourceBranch}`;
+    } catch {
+      // No remote — use local branch as-is
+      resolvedSource = sourceBranch;
+    }
   }
 
   try {

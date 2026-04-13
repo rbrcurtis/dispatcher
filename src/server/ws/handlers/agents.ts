@@ -3,6 +3,7 @@ import { Card } from '../../models/Card';
 import { buildPromptWithFiles } from '../../sessions/manager';
 import { trackSession } from '../../controllers/card-sessions';
 import { ensureWorktree } from '../../sessions/worktree';
+import { getModelConfig } from '../../config/providers';
 
 export async function handleAgentSend(
   data: { cardId: number; message: string; files?: Array<{ id: string; name: string; mimeType: string; path: string; size: number }> },
@@ -33,11 +34,13 @@ export async function handleAgentSend(
     } else {
       // New session or resume
       const cwd = await ensureWorktree(card);
+      const modelCfg = getModelConfig(card.provider, card.model);
+      const modelId = modelCfg?.modelID ?? card.model;
       const sessionId = await client.create({
         prompt,
         cwd,
         provider: card.provider,
-        model: card.model,
+        model: modelId,
         sessionId: card.sessionId ?? undefined,
         contextWindow: card.contextWindow,
       });

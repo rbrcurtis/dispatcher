@@ -112,6 +112,15 @@ export function waitForCardInColumn(
   );
 }
 
+/** Join a card's socket room to receive session:message events. */
+export function joinCard(
+  socket: AppSocket,
+  cardId: number,
+  timeoutMs = 10_000,
+): Promise<{ messages: unknown[] }> {
+  return emit<{ messages: unknown[] }>(socket, 'session:load', { cardId }, timeoutMs);
+}
+
 /** Collect session:message events for a card. Returns a stop function. */
 export function collectSessionMessages(
   socket: AppSocket,
