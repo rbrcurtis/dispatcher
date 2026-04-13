@@ -1,4 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock pi-ai to avoid bun:sqlite transitive import under Node/vitest
+vi.mock('@oh-my-pi/pi-ai', () => ({
+  enrichModelThinking: (model: unknown) => model,
+}));
+
 import { apiForProvider, resolveModel } from '../model-registry';
 import type { ProviderConfig } from '../config';
 
