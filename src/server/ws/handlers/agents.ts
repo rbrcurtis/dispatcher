@@ -1,7 +1,7 @@
 import type { AckResponse } from '../../../shared/ws-protocol';
 import { Card } from '../../models/Card';
 import { buildPromptWithFiles } from '../../sessions/manager';
-import { registerCardSession } from '../../controllers/card-sessions';
+import { trackSession } from '../../controllers/card-sessions';
 import { ensureWorktree } from '../../sessions/worktree';
 
 export async function handleAgentSend(
@@ -25,7 +25,8 @@ export async function handleAgentSend(
     card.promptsSent = (card.promptsSent ?? 0) + 1;
 
     if (card.sessionId && client.isActive(card.sessionId)) {
-      // Follow-up to active session
+      // Follow-up to active session — ensure tracked in router map
+      trackSession(cardId, card.sessionId);
       client.message(card.sessionId, prompt);
       card.updatedAt = new Date().toISOString();
       await card.save();
@@ -42,7 +43,7 @@ export async function handleAgentSend(
       });
 
       card.sessionId = sessionId;
-      registerCardSession(cardId, sessionId);
+      trackSession(cardId, sessionId);
 
       if (card.column !== 'running') {
         card.column = 'running';
@@ -103,7 +104,7 @@ export async function handleAgentStatus(
 
     const active = !!(card?.sessionId && client?.isActive(card.sessionId));
 
-    if (!active && card && card.column === 'running' && card.queuePosition == null) {
+    if (!active && card && card.column === 'running') {
       card.column = 'review';
       card.updatedAt = new Date().toISOString();
       await card.save();

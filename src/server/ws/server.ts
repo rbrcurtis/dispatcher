@@ -143,7 +143,8 @@ export function wsServerPlugin(): Plugin {
             if (initState.initialized) return;
 
             const { OrcdClient } = await import('../orcd-client');
-            const { registerAutoStart, registerWorktreeCleanup } = await import('../controllers/card-sessions');
+            const { initOrcdRouter, trackSession, registerAutoStart, registerWorktreeCleanup } =
+              await import('../controllers/card-sessions');
 
             let client = initState.getOrcdClient();
             if (!client) {
@@ -152,9 +153,25 @@ export function wsServerPlugin(): Plugin {
               initState.setOrcdClient(client);
             }
 
+            // Register the single global orcd message router
+            initOrcdRouter(client);
+
+            // Populate session map from running cards so messages route after restart
+            try {
+              const { Card: CardModel } = await import('../models/Card');
+              const runningCards = await CardModel.find({ where: { column: 'running' } });
+              for (const card of runningCards) {
+                if (card.sessionId) {
+                  trackSession(card.id, card.sessionId);
+                }
+              }
+            } catch (err) {
+              console.error('[startup] session map population failed:', err);
+            }
+
             registerAutoStart();
             registerWorktreeCleanup();
-            console.log('[orcd] OrcdClient connected, controller listeners registered');
+            console.log('[orcd] OrcdClient connected, router + listeners registered');
 
             initState.markInitialized();
 
@@ -163,7 +180,6 @@ export function wsServerPlugin(): Plugin {
               const { Card } = await import('../models/Card');
               const cards = await Card.find({ where: { column: 'running' } });
               for (const card of cards) {
-                if (card.queuePosition != null) continue;
                 card.column = 'review';
                 card.updatedAt = new Date().toISOString();
                 await card.save();

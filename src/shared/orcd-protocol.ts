@@ -86,6 +86,13 @@ export interface SessionExitMessage {
   state: 'completed' | 'errored' | 'stopped';
 }
 
+export interface ContextUsageMessage {
+  type: 'context_usage';
+  sessionId: string;
+  contextTokens: number;
+  contextWindow: number;
+}
+
 export interface SessionListMessage {
   type: 'session_list';
   sessions: Array<{
@@ -101,4 +108,5 @@ export type OrcdMessage =
   | SessionResultMessage
   | SessionErrorMessage
   | SessionExitMessage
+  | ContextUsageMessage
   | SessionListMessage;

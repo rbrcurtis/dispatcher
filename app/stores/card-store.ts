@@ -151,10 +151,6 @@ export class CardStore {
     }
   }
 
-  async reorderQueue(cardId: number, newPosition: number) {
-    await this.ws().emit('queue:reorder', { cardId, newPosition });
-  }
-
   async generateTitle(id: number): Promise<void> {
     await this.ws().emit('card:generateTitle', { id });
   }

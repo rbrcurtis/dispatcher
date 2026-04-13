@@ -7,24 +7,17 @@ export type SlotState =
   | { type: 'manual'; cardId: number }
   | { type: 'empty' };
 
-/** Rank eligible cards: review (oldest first) → active running (newest first) → queued running (queuePosition asc). */
+/** Rank eligible cards: review (oldest first) → running (newest first). */
 function rankCards(eligible: Card[]): Card[] {
   const review = eligible
     .filter((c) => c.column === 'review')
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-  const activeRunning = eligible
-    .filter((c) => c.column === 'running' && c.queuePosition == null)
+  const running = eligible
+    .filter((c) => c.column === 'running')
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-  const queuedRunning = eligible
-    .filter((c) => c.column === 'running' && c.queuePosition != null)
-    .sort((a, b) => {
-      const qDiff = (a.queuePosition ?? 0) - (b.queuePosition ?? 0);
-      return qDiff !== 0 ? qDiff : b.updatedAt.localeCompare(a.updatedAt);
-    });
-
-  return [...review, ...activeRunning, ...queuedRunning];
+  return [...review, ...running];
 }
 
 /**
@@ -41,8 +34,7 @@ function rankCards(eligible: Card[]): Card[] {
  *
  * Priority per project:
  *   1. Review cards — oldest createdAt first
- *   2. Active running (queuePosition == null) — newest updatedAt first
- *   3. Queued running — queuePosition ascending, newest updatedAt as tiebreak
+ *   2. Running cards — newest updatedAt first
  */
 export function resolvePinnedCards(
   slots: SlotState[],

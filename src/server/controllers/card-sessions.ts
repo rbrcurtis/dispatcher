@@ -1,75 +1,100 @@
 import { Card } from '../models/Card';
-import { Project } from '../models/Project';
 import { messageBus, type MessageBus } from '../bus';
 import { AppDataSource } from '../models/index';
-import { processQueue } from '../services/queue-gate';
 import type { OrcdMessage } from '../../shared/orcd-protocol';
+import type { OrcdClient } from '../orcd-client';
+
+// ── Session → Card routing map ───────────────────────────────────────────────
+
+const sessionCardMap = new Map<string, number>();
+
+/** Register a sessionId → cardId mapping so the global router can route messages. */
+export function trackSession(cardId: number, sessionId: string): void {
+  sessionCardMap.set(sessionId, cardId);
+  console.log(`[orcd-router] tracking session ${sessionId.slice(0, 8)} → card ${cardId}`);
+}
+
+/** Remove a session from the routing map. */
+export function untrackSession(sessionId: string): void {
+  sessionCardMap.delete(sessionId);
+}
+
+// ── Global orcd message router ───────────────────────────────────────────────
 
 /**
- * Register per-card session event handlers.
- * Listens to OrcdClient messages for the given sessionId and:
- * - Forwards SDK events to card's messageBus topic (for Socket.IO bridge)
- * - Persists session counters to DB on result
- * - Moves card to review on session exit
+ * Register a single global onMessage handler on the OrcdClient.
+ * Routes messages by looking up sessionId → cardId in the map.
+ * Call once at startup — survives for the process lifetime.
  */
-export function registerCardSession(cardId: number, sessionId: string): void {
-  const repo = AppDataSource.getRepository(Card);
-  let registered = true;
+let routerInitialized = false;
 
-  const handler = async (msg: OrcdMessage) => {
-    if (!registered) return;
+export function initOrcdRouter(
+  client: OrcdClient,
+  bus: MessageBus = messageBus,
+): void {
+  if (routerInitialized) return;
+  routerInitialized = true;
+  const repo = () => AppDataSource.getRepository(Card);
 
-    // Only handle events for our session
-    if (!('sessionId' in msg) || msg.sessionId !== sessionId) return;
+  client.onMessage(async (msg: OrcdMessage) => {
+    if (!('sessionId' in msg)) return;
+    const cardId = sessionCardMap.get(msg.sessionId);
+    if (cardId == null) return;
 
     if (msg.type === 'stream_event') {
       // Forward pi AgentEvent to messageBus for Socket.IO bridge
-      messageBus.publish(`card:${cardId}:sdk`, msg.event as Record<string, unknown>);
+      bus.publish(`card:${cardId}:sdk`, msg.event as Record<string, unknown>);
     }
 
     if (msg.type === 'result') {
       const result = msg.result as Record<string, unknown>;
-      messageBus.publish(`card:${cardId}:sdk`, result);
+      bus.publish(`card:${cardId}:sdk`, result);
 
-      // Persist turn count (result = one turn done, but session may still be alive for background tasks)
-      const card = await repo.findOneBy({ id: cardId });
+      const card = await repo().findOneBy({ id: cardId });
       if (card) {
         card.turnsCompleted = (card.turnsCompleted ?? 0) + 1;
         card.updatedAt = new Date().toISOString();
-        await repo.save(card);
+        await repo().save(card);
       }
     }
 
+    if (msg.type === 'context_usage') {
+      const card = await repo().findOneBy({ id: cardId });
+      if (card) {
+        card.contextTokens = msg.contextTokens;
+        card.contextWindow = msg.contextWindow;
+        card.updatedAt = new Date().toISOString();
+        await repo().save(card);
+      }
+      bus.publish(`card:${cardId}:context`, {
+        contextTokens: msg.contextTokens,
+        contextWindow: msg.contextWindow,
+      });
+    }
+
     if (msg.type === 'error') {
-      messageBus.publish(`card:${cardId}:sdk`, {
+      bus.publish(`card:${cardId}:sdk`, {
         type: 'error',
         message: msg.error,
         timestamp: Date.now(),
       });
     }
 
-    // Session actually exited (orcd iterator closed) — now move card to review
     if (msg.type === 'session_exit') {
-      await handleSessionExit(cardId);
-      unregister();
+      await handleSessionExit(cardId, bus);
+      untrackSession(msg.sessionId);
     }
-  };
-
-  const unregister = async () => {
-    registered = false;
-    const initState = await import('../init-state');
-    const client = initState.getOrcdClient();
-    client?.offMessage(handler);
-  };
-
-  // Register handler on OrcdClient
-  import('../init-state').then((initState) => {
-    const client = initState.getOrcdClient();
-    client?.onMessage(handler);
   });
+
+  console.log('[orcd-router] global handler registered');
 }
 
-async function handleSessionExit(cardId: number): Promise<void> {
+// ── Session exit ─────────────────────────────────────────────────────────────
+
+async function handleSessionExit(
+  cardId: number,
+  bus: MessageBus = messageBus,
+): Promise<void> {
   const repo = AppDataSource.getRepository(Card);
   const card = await repo.findOneBy({ id: cardId });
 
@@ -79,19 +104,13 @@ async function handleSessionExit(cardId: number): Promise<void> {
     await repo.save(card);
   }
 
-  // Process queue for non-worktree cards
-  const freshCard = await repo.findOneBy({ id: cardId });
-  if (freshCard && !freshCard.worktreeBranch && freshCard.projectId) {
-    processQueue(freshCard.projectId).catch((err) => {
-      console.error(`[oc:${cardId}] processQueue failed on exit:`, err);
-    });
-  }
-
-  messageBus.publish(`card:${cardId}:exit`, {
+  bus.publish(`card:${cardId}:exit`, {
     sessionId: card?.sessionId,
     status: 'completed',
   });
 }
+
+// ── Board event listeners ────────────────────────────────────────────────────
 
 export function registerAutoStart(bus: MessageBus = messageBus): void {
   bus.subscribe('board:changed', async (payload) => {
@@ -114,32 +133,13 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       // Check if already active in orcd
       if (fullCard.sessionId && client.isActive(fullCard.sessionId)) return;
 
-      // Non-worktree cards on git repos: delegate to queue processing
-      if (!fullCard.worktreeBranch && fullCard.projectId) {
-        const proj = await Project.findOneBy({ id: fullCard.projectId });
-        if (proj?.isGitRepo) {
-          console.log(
-            `[oc:auto-start] card #${card.id} entered running ` +
-              `(non-worktree, project=${card.projectId}, qP=${card.queuePosition})`,
-          );
-          processQueue(fullCard.projectId).catch((err) => {
-            console.error(`[oc:auto-start] processQueue failed for card #${card.id}:`, err);
-          });
-          return;
-        }
-      }
-
-      // Direct start (worktree or no project)
       console.log(
         `[oc:auto-start] card #${card.id} entered running ` +
           `(worktree=${!!card.worktreeBranch}, project=${card.projectId})`,
       );
       const { ensureWorktree } = await import('../sessions/worktree');
       const cwd = await ensureWorktree(fullCard);
-      const prompt = fullCard.pendingPrompt ?? (fullCard.sessionId ? '' : fullCard.description ?? '');
-      fullCard.pendingPrompt = null;
-      fullCard.pendingFiles = null;
-      await repo().save(fullCard);
+      const prompt = fullCard.sessionId ? '' : fullCard.description ?? '';
 
       const sessionId = await client.create({
         prompt,
@@ -154,7 +154,7 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       fullCard.updatedAt = new Date().toISOString();
       await repo().save(fullCard);
 
-      registerCardSession(fullCard.id, sessionId);
+      trackSession(fullCard.id, sessionId);
     }
 
     // Card left running: cancel session
@@ -163,19 +163,6 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
       const client = initState.getOrcdClient();
       if (card.sessionId) {
         client?.cancel(card.sessionId);
-      }
-
-      if (!card.worktreeBranch && card.projectId) {
-        const proj = await Project.findOneBy({ id: card.projectId });
-        if (proj?.isGitRepo) {
-          console.log(
-            `[oc:auto-start] card #${card.id} left running → ${newColumn} ` +
-              `(project=${card.projectId}), processing queue`,
-          );
-          processQueue(card.projectId).catch((err) => {
-            console.error(`[oc:auto-start] processQueue failed for project ${card.projectId}:`, err);
-          });
-        }
       }
     }
   });
@@ -195,6 +182,7 @@ export function registerWorktreeCleanup(bus: MessageBus = messageBus): void {
     if (!c.worktreeBranch || !c.projectId) return;
 
     try {
+      const { Project } = await import('../models/Project');
       const proj = await Project.findOneBy({ id: c.projectId });
       if (!proj) return;
 

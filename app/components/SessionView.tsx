@@ -291,7 +291,6 @@ export const SessionView = observer(function SessionView({
         <div className="flex items-center gap-2 px-3 py-1.5 bg-muted border-t border-border shrink-0 min-w-0 overflow-hidden">
           <StatusBadge
             status={isStarting && sessionStatus !== 'running' ? 'starting' : sessionStatus}
-            queuePosition={cardStore.getCard(cardId)?.queuePosition}
           />
           {retryInfo && (
             <span className="text-[11px] text-neon-amber truncate min-w-0">
@@ -391,7 +390,7 @@ export const SessionView = observer(function SessionView({
 
 // --- Status badge ---
 
-function StatusBadge({ status, queuePosition }: { status: string; queuePosition?: number | null }) {
+function StatusBadge({ status }: { status: string }) {
   let variant: 'default' | 'secondary' | 'destructive' | 'outline';
   let label: string;
 
@@ -399,7 +398,7 @@ function StatusBadge({ status, queuePosition }: { status: string; queuePosition?
     case 'running':
     case 'starting':
       variant = 'default';
-      label = queuePosition != null ? `Waiting...#${queuePosition}` : status === 'starting' ? 'Starting...' : 'Running';
+      label = status === 'starting' ? 'Starting...' : 'Running';
       break;
     case 'completed':
     case 'stopped':
@@ -408,7 +407,7 @@ function StatusBadge({ status, queuePosition }: { status: string; queuePosition?
       break;
     case 'retry':
       variant = 'outline';
-      label = 'Queued';
+      label = 'Retrying...';
       break;
     default:
       variant = 'destructive';
