@@ -66,7 +66,14 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
   // Auto-close if the card is deleted or moved to archive while viewing
   const wasLoaded = useRef(false);
   const initialColumn = useRef(card?.column);
+  const prevCardId = useRef(cardId);
   if (card) wasLoaded.current = true;
+  // Reset initialColumn during render (before effects) when the displayed card changes,
+  // so the auto-close guard doesn't fire on cards that were already archived when selected.
+  if (cardId !== prevCardId.current) {
+    prevCardId.current = cardId;
+    initialColumn.current = card?.column;
+  }
   useEffect(() => {
     if (!wasLoaded.current) return;
     const dismiss = pinned && clearSlot ? clearSlot : onClose;
