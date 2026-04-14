@@ -47,6 +47,7 @@ type Draft = {
   title: string;
   description: string;
   projectId: number | null;
+  useWorktree: boolean;
   worktreeBranch: string | null;
   sourceBranch: string | null;
   provider: string;
@@ -81,6 +82,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
     title: '',
     description: '',
     projectId: null,
+    useWorktree: false,
     worktreeBranch: null,
     sourceBranch: null,
     provider: 'anthropic',
@@ -105,6 +107,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
       title: card.title,
       description: card.description ?? '',
       projectId: card.projectId,
+      useWorktree: !!card.worktreeBranch,
       worktreeBranch: card.worktreeBranch,
       sourceBranch: card.sourceBranch,
       provider: card.provider ?? cardProject?.providerID ?? 'anthropic',
@@ -135,6 +138,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
       title: titleFocused ? d.title : card.title,
       description: descFocused ? d.description : (card.description ?? ''),
       projectId: card.projectId,
+      useWorktree: !!card.worktreeBranch,
       worktreeBranch: card.worktreeBranch,
       sourceBranch: card.sourceBranch,
       provider: card.provider ?? d.provider,
@@ -587,7 +591,8 @@ export const NewCardDetail = observer(function NewCardDetail({
           title: '',
           description: '',
           projectId: initialProjectId,
-          worktreeBranch: null,  // can't slugify empty title; server auto-sets if project.defaultWorktree
+          useWorktree: !!proj.defaultWorktree,
+          worktreeBranch: null,
           sourceBranch: null,
           provider: prov,
           model: proj.defaultModel ?? config.getDefaultModel(prov),
@@ -599,7 +604,8 @@ export const NewCardDetail = observer(function NewCardDetail({
       title: '',
       description: '',
       projectId: null,
-      worktreeBranch: null,  // can't slugify empty title; server auto-sets if project.defaultWorktree
+      useWorktree: false,
+      worktreeBranch: null,
       sourceBranch: null,
       provider: 'anthropic',
       model: 'sonnet',
@@ -630,7 +636,7 @@ export const NewCardDetail = observer(function NewCardDetail({
         description: draft.description || undefined,
         column: selectedColumn as Column,
         projectId: draft.projectId,
-        worktreeBranch: draft.worktreeBranch,
+        worktreeBranch: draft.useWorktree ? slugify(draft.title) || null : null,
         sourceBranch: draft.sourceBranch as 'main' | 'dev' | null | undefined,
         provider: draft.provider,
         model: draft.model,
@@ -729,7 +735,7 @@ export const NewCardDetail = observer(function NewCardDetail({
                   return {
                     ...d,
                     projectId: pid,
-                    worktreeBranch: proj?.isGitRepo && proj.defaultWorktree ? (slugify(d.title) || null) : null,
+                    useWorktree: !!(proj?.isGitRepo && proj.defaultWorktree),
                     sourceBranch: null,
                     provider: prov,
                     model: proj?.defaultModel ?? config.getDefaultModel(prov),
@@ -762,10 +768,10 @@ export const NewCardDetail = observer(function NewCardDetail({
             <div className="flex items-center gap-2">
               <Checkbox
                 id="newUseWorktree"
-                checked={!!draft.worktreeBranch}
+                checked={draft.useWorktree}
                 onCheckedChange={(checked) => setDraft((d) => ({
                   ...d,
-                  worktreeBranch: checked === true ? (slugify(d.title) || null) : null,
+                  useWorktree: checked === true,
                 }))}
               />
               <label htmlFor="newUseWorktree" className="text-sm font-medium text-muted-foreground">
@@ -774,7 +780,7 @@ export const NewCardDetail = observer(function NewCardDetail({
             </div>
           )}
 
-          {!!selectedProject?.isGitRepo && !!draft.worktreeBranch && (
+          {!!selectedProject?.isGitRepo && draft.useWorktree && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Source Branch</label>
               <Select
