@@ -136,4 +136,4 @@ CREATE TABLE project_users (
 ## Guardrails
 
 - **DB file:** `data/orchestrel.db` — Schema additions (`ALTER TABLE ADD COLUMN`) via sqlite3 CLI are safe anytime. NEVER truncate DB files or run WAL management commands (`wal_checkpoint`, `PRAGMA journal_mode`, etc.) — SQLite handles this automatically. A `wal_checkpoint(TRUNCATE)` previously destroyed ~68 cards.
-- **Vite HMR:** works through tunnel — do NOT hardcode `hmr.host` in vite.config.ts (let Vite auto-detect)
+- **Vite HMR:** works through tunnel via `hmr.orchestrel.com` (bypasses CF Access). Config is env-driven: systemd sets `HMR_HOST=hmr.orchestrel.com` → Vite uses that host + port 443. Without `HMR_HOST` (local dev), Vite auto-detects. Do NOT hardcode HMR settings in vite.config.ts.

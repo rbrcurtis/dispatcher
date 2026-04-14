@@ -55,9 +55,9 @@ export default defineConfig(({ isSsrBuild }) => ({
     port: Number(process.env.PORT) || 6194,
     host: process.env.HOST || '0.0.0.0',
     allowedHosts: true,
-    hmr: {
-      clientPort: 443,
-    },
+    hmr: process.env.HMR_HOST
+      ? { host: process.env.HMR_HOST, clientPort: 443 }
+      : {},
     watch: {
       ignored: ['**/.worktrees/**', '**/data/**'],
     },
