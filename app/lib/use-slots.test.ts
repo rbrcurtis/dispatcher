@@ -509,10 +509,11 @@ describe('findSlotsToRecalc', () => {
     return new Map(entries);
   }
 
-  it('recalcs pinned slot when displayed card changes review → running', () => {
+  it('recalcs pinned slot when displayed card changes review → running and review card available', () => {
     const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 10 }];
     const cards = [
       makeCard({ id: 1, projectId: 10, column: 'running', updatedAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'review', updatedAt: '2026-03-20T02:00:00Z' }),
     ];
     const resolved = new Map([[1, 1]]); // slot 1 shows card 1
     const prev = prevCols([[1, 'review']]); // was review
@@ -536,6 +537,7 @@ describe('findSlotsToRecalc', () => {
     const slots: SlotState[] = [{ type: 'empty' }];
     const cards = [
       makeCard({ id: 1, projectId: 10, column: 'running', updatedAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'review', updatedAt: '2026-03-20T02:00:00Z' }),
     ];
     const resolved = new Map([[0, 1]]); // hotseat shows card 1
     const prev = prevCols([[1, 'review']]);
@@ -546,6 +548,7 @@ describe('findSlotsToRecalc', () => {
     const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 'all' }];
     const cards = [
       makeCard({ id: 1, projectId: 10, column: 'running', updatedAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 20, column: 'review', updatedAt: '2026-03-20T02:00:00Z' }),
     ];
     const resolved = new Map([[1, 1]]);
     const prev = prevCols([[1, 'review']]);
@@ -577,10 +580,11 @@ describe('findSlotsToRecalc', () => {
     const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 10 }];
     const cards = [
       makeCard({ id: 1, projectId: 10, column: 'running', updatedAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'review', updatedAt: '2026-03-20T02:00:00Z' }),
     ];
     const resolved = new Map([[1, 1]]);
     const prev = prevCols([[1, 'review']]);
-    // Card 1 is focused — slot 1 should NOT recalc
+    // Card 1 is focused — slot 1 should NOT recalc even though review card available
     expect(findSlotsToRecalc(prev, cards, slots, resolved, 1)).toEqual([]);
   });
 
@@ -658,12 +662,50 @@ describe('findSlotsToRecalc', () => {
     const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 10, cardId: 1 }];
     const cards = [
       makeCard({ id: 1, projectId: 10, column: 'running', updatedAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'review', updatedAt: '2026-03-20T02:00:00Z' }),
     ];
     // Slot 1 has override cardId 1, resolver didn't resolve (override takes precedence)
     const resolved = new Map<number, number>();
     const prev = prevCols([[1, 'review']]);
     // displayedCardId = currentResolved.get(1) ?? slot.cardId ?? null = 1
+    // Note: card 1 is in usedCardIds (pinned override), but hasReview checks c.id !== displayedCardId
+    // Card 2 (review, project 10, not in usedCardIds) satisfies condition 5
     expect(findSlotsToRecalc(prev, cards, slots, resolved, null)).toEqual([1]);
+  });
+
+  it('does not recalc when no review card available (avoids running→running swap)', () => {
+    const slots: SlotState[] = [{ type: 'empty' }, { type: 'pinned', projectId: 10 }];
+    const cards = [
+      makeCard({ id: 1, projectId: 10, column: 'running', updatedAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'running', updatedAt: '2026-03-20T02:00:00Z' }),
+    ];
+    const resolved = new Map([[1, 1]]); // slot 1 shows card 1 (running)
+    const prev = prevCols([[1, 'review']]); // card 1 was review, now running
+    // No review card for project 10 → would just swap running for running
+    expect(findSlotsToRecalc(prev, cards, slots, resolved, null)).toEqual([]);
+  });
+
+  it('does not recalc hotseat when only running cards available', () => {
+    const slots: SlotState[] = [{ type: 'empty' }];
+    const cards = [
+      makeCard({ id: 1, projectId: 10, column: 'running', updatedAt: '2026-03-20T01:00:00Z' }),
+    ];
+    const resolved = new Map([[0, 1]]);
+    const prev = prevCols([[1, 'review']]);
+    expect(findSlotsToRecalc(prev, cards, slots, resolved, null)).toEqual([]);
+  });
+
+  it('does not count review cards in manual slots as available', () => {
+    // Card 2 is review but in a manual slot — not available to the resolver
+    const slots: SlotState[] = [{ type: 'manual', cardId: 2 }, { type: 'pinned', projectId: 10 }];
+    const cards = [
+      makeCard({ id: 1, projectId: 10, column: 'running', updatedAt: '2026-03-20T01:00:00Z' }),
+      makeCard({ id: 2, projectId: 10, column: 'review', updatedAt: '2026-03-20T02:00:00Z' }),
+    ];
+    const resolved = new Map([[1, 1]]);
+    const prev = prevCols([[1, 'review']]);
+    // Card 2 is in usedCardIds (manual slot) → not available → no recalc
+    expect(findSlotsToRecalc(prev, cards, slots, resolved, null)).toEqual([]);
   });
 
   it('returns empty for new cards with no previous column', () => {

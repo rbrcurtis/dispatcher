@@ -237,6 +237,7 @@ export function applyColumnCountChange(slots: SlotState[], newCount: number): Sl
  *   2. Currently displayed card in the slot is running
  *   3. The changed card's project matches the slot's pin
  *   4. The slot is not focused (user not typing)
+ *   5. A review card is available for this pin (avoids running→running swaps)
  *
  * Returns array of slot indices that should have sticky cleared.
  */
@@ -263,6 +264,13 @@ export function findSlotsToRecalc(
   }
 
   if (changed.length === 0) return [];
+
+  // Cards stored in slot state (manual + pinned overrides) — excluded from resolver pool
+  const usedCardIds = new Set<number>();
+  for (const slot of slots) {
+    if (slot.type === 'manual') usedCardIds.add(slot.cardId);
+    else if (slot.type === 'pinned' && slot.cardId != null) usedCardIds.add(slot.cardId);
+  }
 
   const result = new Set<number>();
 
@@ -291,6 +299,17 @@ export function findSlotsToRecalc(
       // Condition 3: changed card matches the pin's project
       const pinProjectId = slot.type === 'pinned' ? slot.projectId : 'all';
       if (pinProjectId !== 'all' && changedCard.projectId !== pinProjectId) continue;
+
+      // Condition 5: a review card is available for this pin — skip if the
+      // recalc would just swap one running card for another
+      const hasReview = cards.some((c) =>
+        c.column === 'review' &&
+        c.projectId != null &&
+        c.id !== displayedCardId &&
+        !usedCardIds.has(c.id) &&
+        (pinProjectId === 'all' || c.projectId === pinProjectId),
+      );
+      if (!hasReview) continue;
 
       result.add(i);
     }
