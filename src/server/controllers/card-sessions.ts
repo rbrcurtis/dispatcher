@@ -283,41 +283,56 @@ export function registerWorktreeCleanup(bus: MessageBus = messageBus): void {
   });
 }
 
+/**
+ * Run memory upsert for a card — extract facts from conversation and store in memory API.
+ * Returns true if upsert ran, false if skipped (not configured / no session).
+ */
+async function runMemoryUpsert(cardId: number, card: Card): Promise<boolean> {
+  if (!card.sessionId || !card.projectId) return false;
+
+  const proj = await Project.findOneBy({ id: card.projectId });
+  if (!proj) return false;
+
+  const config = await loadConfig();
+  const memBaseUrl = proj.memoryBaseUrl ?? config.memoryUpsert?.baseUrl;
+  const memApiKey = proj.memoryApiKey ?? config.memoryUpsert?.apiKey;
+  const memEnabled = config.memoryUpsert?.enabled !== false && !!memBaseUrl && !!memApiKey;
+
+  if (!memEnabled) return false;
+
+  const cwd = resolveWorkDir(card.worktreeBranch ?? null, proj.path);
+  console.log(`[memory-upsert:${cardId}] extracting memories (server: ${memBaseUrl})`);
+
+  const upsertResult = await upsertMemories({
+    sessionId: card.sessionId,
+    projectPath: cwd,
+    projectName: proj.name,
+    model: card.model,
+    memoryBaseUrl: memBaseUrl!,
+    memoryApiKey: memApiKey!,
+  });
+
+  console.log(
+    `[memory-upsert:${cardId}] done: ${upsertResult.factsStored}/${upsertResult.factsExtracted} facts stored, ${upsertResult.durationMs}ms`,
+  );
+  return true;
+}
+
 async function triggerCompaction(cardId: number, card: Card): Promise<void> {
   if (!card.sessionId || !card.projectId) return;
 
   const proj = await Project.findOneBy({ id: card.projectId });
   if (!proj) return;
 
-  const cwd = resolveWorkDir(card.worktreeBranch ?? null, proj.path);
-
   // Step 1: Memory upsert — extract facts from ALL messages since last boundary
-  // Per-project memory config overrides global; skip if neither is configured
   try {
-    const config = await loadConfig();
-    const memBaseUrl = proj.memoryBaseUrl ?? config.memoryUpsert?.baseUrl;
-    const memApiKey = proj.memoryApiKey ?? config.memoryUpsert?.apiKey;
-    const memEnabled = config.memoryUpsert?.enabled !== false && !!memBaseUrl && !!memApiKey;
-
-    if (memEnabled) {
-      console.log(`[memory-upsert:${cardId}] extracting memories before compaction (server: ${memBaseUrl})`);
-      const upsertResult = await upsertMemories({
-        sessionId: card.sessionId,
-        projectPath: cwd,
-        projectName: proj.name,
-        model: card.model,
-        memoryBaseUrl: memBaseUrl!,
-        memoryApiKey: memApiKey!,
-      });
-      console.log(
-        `[memory-upsert:${cardId}] done: ${upsertResult.factsStored}/${upsertResult.factsExtracted} facts stored, ${upsertResult.durationMs}ms`,
-      );
-    }
+    await runMemoryUpsert(cardId, card);
   } catch (err) {
     console.error(`[memory-upsert:${cardId}] failed (continuing to compaction):`, err);
   }
 
   // Step 2: Compact — summarize oldest 50% using the card's own model via Agent SDK
+  const cwd = resolveWorkDir(card.worktreeBranch ?? null, proj.path);
   console.log(`[compact:${cardId}] triggering background compaction (${card.contextTokens}/${card.contextWindow} = ${((card.contextTokens / card.contextWindow) * 100).toFixed(0)}%)`);
 
   const result = await compactSession({
@@ -330,6 +345,28 @@ async function triggerCompaction(cardId: number, card: Card): Promise<void> {
     `[compact:${cardId}] done: ${result.messagesCovered}/${result.messagesBefore} messages, ` +
     `${result.summaryChars} chars summary, ${result.durationMs}ms`
   );
+}
+
+export function registerMemoryUpsertOnComplete(bus: MessageBus = messageBus): void {
+  bus.subscribe('board:changed', async (payload) => {
+    const { card, oldColumn, newColumn } = payload as {
+      card: Card | null;
+      oldColumn: string | null;
+      newColumn: string | null;
+    };
+    if (!card) return;
+
+    // Only on first transition to done/archive — skip done→archive (already upserted)
+    const isTerminal = newColumn === 'done' || newColumn === 'archive';
+    const wasTerminal = oldColumn === 'done' || oldColumn === 'archive';
+    if (!isTerminal || wasTerminal) return;
+
+    if (!card.sessionId || !card.projectId) return;
+
+    runMemoryUpsert(card.id, card).catch((err) => {
+      console.error(`[memory-upsert:${card.id}] on-complete failed:`, err);
+    });
+  });
 }
 
 function repo() {

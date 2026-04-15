@@ -99,7 +99,7 @@ export async function initBackend(): Promise<{
   }
 
   // --- OC controllers + OrcdClient ---
-  const { initOrcdRouter, trackSession, registerAutoStart, registerWorktreeCleanup } =
+  const { initOrcdRouter, trackSession, registerAutoStart, registerWorktreeCleanup, registerMemoryUpsertOnComplete } =
     await import('./controllers/card-sessions');
   const initState = await import('./init-state');
 
@@ -129,6 +129,7 @@ export async function initBackend(): Promise<{
 
   registerAutoStart();
   registerWorktreeCleanup();
+  registerMemoryUpsertOnComplete();
   console.log('[orcd] OrcdClient connected, router + listeners registered');
 
   // Move stale running cards to review
