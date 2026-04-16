@@ -1,11 +1,11 @@
-import { loadConfig } from './config';
+import { loadOrcdConfig } from './config';
 import { OrcdServer } from './socket-server';
 import { homedir } from 'os';
 
 async function main() {
   console.log('[orcd] starting...');
 
-  const config = await loadConfig();
+  const config = await loadOrcdConfig();
 
   // Resolve ~ in socket path
   const socketPath = config.socket.replace(/^~/, homedir());

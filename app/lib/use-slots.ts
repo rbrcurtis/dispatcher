@@ -265,12 +265,15 @@ export function findSlotsToRecalc(
 
   if (changed.length === 0) return [];
 
-  // Cards stored in slot state (manual + pinned overrides) — excluded from resolver pool
+  // Cards stored in slot state (manual + pinned overrides) OR currently assigned
+  // by the resolver — excluded from the "available review" pool so condition 5
+  // doesn't count a review card that's already occupying another slot.
   const usedCardIds = new Set<number>();
   for (const slot of slots) {
     if (slot.type === 'manual') usedCardIds.add(slot.cardId);
     else if (slot.type === 'pinned' && slot.cardId != null) usedCardIds.add(slot.cardId);
   }
+  for (const [, cardId] of currentResolved) usedCardIds.add(cardId);
 
   const result = new Set<number>();
 

@@ -19,26 +19,27 @@ describe('resolveEnvVars', () => {
   });
 });
 
-describe('parseConfig', () => {
-  it('parses minimal config', () => {
+describe('parseConfig (orcd shape)', () => {
+  it('parses minimal config and flattens models to modelID list', () => {
     const yaml = `
 socket: ~/.orc/orcd.sock
 defaultProvider: anthropic
 defaultModel: claude-sonnet-4-6
 defaultCwd: ~/projects
-defaultEffort: high
 
 providers:
   anthropic:
+    label: Anthropic
     baseUrl: https://api.anthropic.com
     apiKey: test-key
     models:
-      - claude-sonnet-4-6
+      sonnet: { label: "Sonnet 4.6", modelID: claude-sonnet-4-6, contextWindow: 200000 }
 `;
     const cfg = parseConfig(yaml, {});
     expect(cfg.defaultProvider).toBe('anthropic');
     expect(cfg.providers.anthropic.baseUrl).toBe('https://api.anthropic.com');
-    expect(cfg.providers.anthropic.models).toContain('claude-sonnet-4-6');
+    expect(cfg.providers.anthropic.apiKey).toBe('test-key');
+    expect(cfg.providers.anthropic.models).toEqual(['claude-sonnet-4-6']);
   });
 
   it('resolves env vars in apiKey', () => {
@@ -48,13 +49,30 @@ defaultProvider: anthropic
 defaultModel: claude-sonnet-4-6
 providers:
   anthropic:
+    label: Anthropic
     baseUrl: https://api.anthropic.com
     apiKey: \${ANTHROPIC_API_KEY}
     models:
-      - claude-sonnet-4-6
+      sonnet: { label: "Sonnet 4.6", modelID: claude-sonnet-4-6, contextWindow: 200000 }
 `;
     const cfg = parseConfig(yaml, { ANTHROPIC_API_KEY: 'sk-live-123' });
     expect(cfg.providers.anthropic.apiKey).toBe('sk-live-123');
+  });
+
+  it('omits apiKey/baseUrl when absent (Max OAuth path)', () => {
+    const yaml = `
+socket: ~/.orc/orcd.sock
+defaultProvider: anthropic
+defaultModel: claude-sonnet-4-6
+providers:
+  anthropic:
+    label: Anthropic
+    models:
+      sonnet: { label: "Sonnet 4.6", modelID: claude-sonnet-4-6, contextWindow: 200000 }
+`;
+    const cfg = parseConfig(yaml, {});
+    expect(cfg.providers.anthropic.baseUrl).toBe('');
+    expect(cfg.providers.anthropic.apiKey).toBe('');
   });
 
   it('throws on missing providers', () => {

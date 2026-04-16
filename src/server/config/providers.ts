@@ -1,70 +1,56 @@
-/* oxlint-disable orchestrel/log-before-early-return -- pure config loader, cache short-circuits are hot path */
-import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
-import { z } from 'zod';
+/* oxlint-disable orchestrel/log-before-early-return -- pure config loader */
+import { loadConfig } from '../../shared/config';
+import type { ModelDef, ProviderDef } from '../../shared/config';
 
-const modelConfigSchema = z.object({
-  label: z.string(),
-  modelID: z.string(),
-  contextWindow: z.number(),
-});
+export type ModelConfig = ModelDef;
 
-const providerConfigSchema = z.object({
-  label: z.string(),
-  models: z.record(z.string(), modelConfigSchema),
-});
-
-const providersFileSchema = z.object({
-  providers: z.record(z.string(), providerConfigSchema),
-});
-
-export type ModelConfig = z.infer<typeof modelConfigSchema>;
-export type ProviderConfig = z.infer<typeof providerConfigSchema>;
-export type ProvidersConfig = z.infer<typeof providersFileSchema>;
-
-const CONFIG_PATH = resolve(process.cwd(), 'providers.json');
-
-let cached: ProvidersConfig | null = null;
-
-export function loadProviders(): ProvidersConfig {
-  if (cached) return cached;
-
-  if (!existsSync(CONFIG_PATH)) {
-    throw new Error(
-      `Provider config not found at ${CONFIG_PATH}. Copy providers.example.json to providers.json`,
-    );
-  }
-
-  const raw = readFileSync(CONFIG_PATH, 'utf-8');
-  const parsed = providersFileSchema.parse(JSON.parse(raw));
-  cached = parsed;
-  return parsed;
+/** UI-facing provider shape — requires label for display. */
+export interface ProviderConfig {
+  label: string;
+  models: Record<string, ModelConfig>;
 }
 
-/** Get the serializable providers map for the frontend */
+export interface ProvidersConfig {
+  providers: Record<string, ProviderConfig>;
+}
+
+function toUIShape(p: ProviderDef, id: string): ProviderConfig {
+  return {
+    label: p.label ?? id,
+    models: p.models,
+  };
+}
+
+export function loadProviders(): ProvidersConfig {
+  const cfg = loadConfig();
+  const providers: Record<string, ProviderConfig> = {};
+  for (const [id, p] of Object.entries(cfg.providers)) {
+    providers[id] = toUIShape(p, id);
+  }
+  return { providers };
+}
+
+/** Serializable providers map for the frontend. */
 export function getProvidersForClient(): ProvidersConfig['providers'] {
   return loadProviders().providers;
 }
 
-/** Look up a model config by provider + model alias */
+/** Look up a model config by provider + model alias. */
 export function getModelConfig(providerID: string, modelAlias: string): ModelConfig | undefined {
-  const config = loadProviders();
-  return config.providers[providerID]?.models[modelAlias];
+  return loadProviders().providers[providerID]?.models[modelAlias];
 }
 
-/** Get the first model alias for a provider (used as default) */
+/** First model alias for a provider (used as default). */
 export function getDefaultModel(providerID: string): string {
-  const config = loadProviders();
-  const provider = config.providers[providerID];
+  const provider = loadProviders().providers[providerID];
   if (!provider) return 'sonnet';
   const keys = Object.keys(provider.models);
   return keys[0] ?? 'sonnet';
 }
 
-/** Get the first provider key from config (used as system-wide default) */
+/** First provider key from config (used as system-wide default). */
 export function getDefaultProviderID(): string {
-  const config = loadProviders();
-  const keys = Object.keys(config.providers);
-  if (!keys.length) throw new Error('No providers configured in providers.json');
+  const keys = Object.keys(loadProviders().providers);
+  if (!keys.length) throw new Error('No providers configured in config.yaml');
   return keys[0];
 }

@@ -1,13 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const VALID_CONFIG = {
-  providers: {
-    anthropic: {
-      label: 'Anthropic',
-      models: {
-        sonnet: { label: 'Sonnet 4.6', modelID: 'claude-sonnet-4-6', contextWindow: 200000 },
-        opus: { label: 'Opus 4.6', modelID: 'claude-opus-4-6', contextWindow: 200000 },
-      },
+const VALID_YAML = `
+socket: ~/.orc/orcd.sock
+defaultProvider: anthropic
+defaultModel: claude-sonnet-4-6
+providers:
+  anthropic:
+    label: Anthropic
+    models:
+      sonnet: { label: "Sonnet 4.6", modelID: claude-sonnet-4-6, contextWindow: 200000 }
+      opus:   { label: "Opus 4.6",   modelID: claude-opus-4-6,   contextWindow: 200000 }
+`;
+
+const EXPECTED_UI_PROVIDERS = {
+  anthropic: {
+    label: 'Anthropic',
+    models: {
+      sonnet: { label: 'Sonnet 4.6', modelID: 'claude-sonnet-4-6', contextWindow: 200000 },
+      opus: { label: 'Opus 4.6', modelID: 'claude-opus-4-6', contextWindow: 200000 },
     },
   },
 };
@@ -17,12 +27,9 @@ vi.mock('fs', () => ({
   readFileSync: vi.fn(),
 }));
 
-// Re-import the module fresh in each test so the `cached` variable is reset.
 async function importModule() {
-  const { loadProviders, getProvidersForClient, getModelConfig, getDefaultModel, getDefaultProviderID } = await import(
-    './providers'
-  );
-  return { loadProviders, getProvidersForClient, getModelConfig, getDefaultModel, getDefaultProviderID };
+  const mod = await import('./providers');
+  return mod;
 }
 
 beforeEach(async () => {
@@ -30,14 +37,13 @@ beforeEach(async () => {
   vi.clearAllMocks();
   const fs = await import('fs');
   vi.mocked(fs.existsSync).mockReturnValue(true);
-  vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(VALID_CONFIG));
+  vi.mocked(fs.readFileSync).mockReturnValue(VALID_YAML);
 });
 
 describe('loadProviders()', () => {
-  it('loads and parses a valid config file', async () => {
+  it('loads and parses a valid YAML config', async () => {
     const { loadProviders } = await importModule();
-    const config = loadProviders();
-    expect(config).toEqual(VALID_CONFIG);
+    expect(loadProviders()).toEqual({ providers: EXPECTED_UI_PROVIDERS });
   });
 
   it('throws when the file does not exist', async () => {
@@ -45,22 +51,23 @@ describe('loadProviders()', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
     const { loadProviders } = await importModule();
-    expect(() => loadProviders()).toThrow('Provider config not found');
+    expect(() => loadProviders()).toThrow(/Config not found/);
   });
 
-  it('throws when JSON fails schema validation (missing required fields)', async () => {
+  it('throws when YAML fails schema validation (missing modelID)', async () => {
     const fs = await import('fs');
-    vi.mocked(fs.readFileSync).mockReturnValue(
-      JSON.stringify({ providers: { anthropic: { label: 'Anthropic' } } }),
-    );
-
+    vi.mocked(fs.readFileSync).mockReturnValue(`
+providers:
+  anthropic:
+    label: Anthropic
+    models:
+      sonnet: { label: "Sonnet 4.6" }
+`);
     const { loadProviders } = await importModule();
-    expect(() => loadProviders()).toThrow();
+    expect(() => loadProviders()).toThrow(/modelID/);
   });
 
   it('caches the result and only reads the file once', async () => {
-    // Import fs and the module in the same reset cycle so we hold the same spy
-    // instance that the module under test will call.
     const [fs, { loadProviders }] = await Promise.all([import('fs'), importModule()]);
 
     loadProviders();
@@ -74,16 +81,16 @@ describe('loadProviders()', () => {
 describe('getProvidersForClient()', () => {
   it('returns the providers map', async () => {
     const { getProvidersForClient } = await importModule();
-    const providers = getProvidersForClient();
-    expect(providers).toEqual(VALID_CONFIG.providers);
+    expect(getProvidersForClient()).toEqual(EXPECTED_UI_PROVIDERS);
   });
 });
 
 describe('getModelConfig()', () => {
   it('returns the model config for a valid provider and alias', async () => {
     const { getModelConfig } = await importModule();
-    const config = getModelConfig('anthropic', 'sonnet');
-    expect(config).toEqual(VALID_CONFIG.providers.anthropic.models.sonnet);
+    expect(getModelConfig('anthropic', 'sonnet')).toEqual(
+      EXPECTED_UI_PROVIDERS.anthropic.models.sonnet,
+    );
   });
 
   it('returns undefined for an unknown provider', async () => {
@@ -100,7 +107,6 @@ describe('getModelConfig()', () => {
 describe('getDefaultModel()', () => {
   it('returns the first model key for a known provider', async () => {
     const { getDefaultModel } = await importModule();
-    // VALID_CONFIG has sonnet first
     expect(getDefaultModel('anthropic')).toBe('sonnet');
   });
 
@@ -118,8 +124,13 @@ describe('getDefaultProviderID()', () => {
 
   it('throws when no providers are configured', async () => {
     const fs = await import('fs');
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ providers: {} }));
+    vi.mocked(fs.readFileSync).mockReturnValue(`
+socket: ~/.orc/orcd.sock
+defaultProvider: anthropic
+defaultModel: claude-sonnet-4-6
+providers: {}
+`);
     const { getDefaultProviderID } = await importModule();
-    expect(() => getDefaultProviderID()).toThrow('No providers configured');
+    expect(() => getDefaultProviderID()).toThrow(/No providers configured/);
   });
 });
