@@ -5,7 +5,9 @@ import { OrcdSession, type SessionEventCallback } from './session';
 import { SessionStore } from './session-store';
 import { expandSlashCommand } from './skill-resolver';
 import type { OrcdAction, OrcdMessage } from '../shared/orcd-protocol';
-import type { ProviderConfig } from './config';
+import type { ProviderConfig, OrcdConfig } from './config';
+import { prepareCompaction, applyCompaction, type PreparedCompaction } from '../lib/session-compactor';
+import { upsertMemories } from '../lib/memory-upsert';
 
 interface ClientState {
   socket: Socket;
@@ -16,12 +18,19 @@ export class OrcdServer {
   private server: Server | null = null;
   private clients = new Set<ClientState>();
   readonly store = new SessionStore();
+  private compacting = new Set<string>();  // session IDs currently compacting
+  private pendingSummaries = new Map<string, PreparedCompaction>();
+  private turnActive = new Set<string>();  // sessions with a turn in progress
+  private memoryConfig?: OrcdConfig['memoryUpsert'];
 
   constructor(
     private socketPath: string,
     private providers: Record<string, ProviderConfig>,
     private defaults: { provider: string; model: string },
-  ) {}
+    memoryConfig?: OrcdConfig['memoryUpsert'],
+  ) {
+    this.memoryConfig = memoryConfig;
+  }
 
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -113,6 +122,9 @@ export class OrcdServer {
       case 'cancel':
         this.handleCancel(action);
         break;
+      case 'memory_upsert':
+        this.handleMemoryUpsert(action);
+        break;
     }
   }
 
@@ -129,9 +141,11 @@ export class OrcdServer {
       provider: action.provider,
       sessionId: action.sessionId,
       contextWindow: action.contextWindow,
+      summarizeThreshold: action.summarizeThreshold,
     });
 
     this.store.add(session);
+    this.attachLifecycleHooks(session);
 
     // Auto-subscribe the creating client
     const cb: SessionEventCallback = (msg) => this.send(client, msg);
@@ -142,11 +156,12 @@ export class OrcdServer {
 
     const effort = action.effort ?? 'high';
 
-    const env = Object.assign({}, process.env, {
-      ANTHROPIC_BASE_URL: providerCfg.baseUrl,
-      ANTHROPIC_API_KEY: providerCfg.apiKey,
-      ...(providerCfg.authToken ? { ANTHROPIC_AUTH_TOKEN: providerCfg.authToken } : {}),
-    }, action.env) as Record<string, string>;
+    const env = Object.assign({}, process.env,
+      providerCfg.baseUrl ? { ANTHROPIC_BASE_URL: providerCfg.baseUrl } : {},
+      providerCfg.apiKey ? { ANTHROPIC_API_KEY: providerCfg.apiKey } : {},
+      providerCfg.authToken ? { ANTHROPIC_AUTH_TOKEN: providerCfg.authToken } : {},
+      action.env,
+    ) as Record<string, string>;
 
     const prompt = expandSlashCommand(action.prompt, action.cwd);
 
@@ -175,11 +190,11 @@ export class OrcdServer {
     }
 
     const providerCfg = this.providers[session.provider];
-    const env = Object.assign({}, process.env, {
-      ANTHROPIC_BASE_URL: providerCfg?.baseUrl ?? '',
-      ANTHROPIC_API_KEY: providerCfg?.apiKey ?? '',
-      ...(providerCfg?.authToken ? { ANTHROPIC_AUTH_TOKEN: providerCfg.authToken } : {}),
-    }) as Record<string, string>;
+    const env = Object.assign({}, process.env,
+      providerCfg?.baseUrl ? { ANTHROPIC_BASE_URL: providerCfg.baseUrl } : {},
+      providerCfg?.apiKey ? { ANTHROPIC_API_KEY: providerCfg.apiKey } : {},
+      providerCfg?.authToken ? { ANTHROPIC_AUTH_TOKEN: providerCfg.authToken } : {},
+    ) as Record<string, string>;
 
     const prompt = expandSlashCommand(action.prompt, session.cwd);
 
@@ -230,5 +245,147 @@ export class OrcdServer {
     session?.cancel().catch((err: unknown) => {
       console.error(`[orcd] cancel error:`, err);
     });
+  }
+
+  private handleMemoryUpsert(action: OrcdAction & { action: 'memory_upsert' }): void {
+    const session = this.store.get(action.sessionId);
+    if (!session) return;
+    this.runMemoryUpsert(session).catch((err) => {
+      console.error(`[orcd:${session.id.slice(0, 8)}] memory_upsert action failed:`, err);
+    });
+  }
+
+  // ── Provider env helper ──────────────────────────────────────────────────
+
+  private buildProviderEnv(provider: string): Record<string, string> {
+    const cfg = this.providers[provider];
+    if (!cfg) return { ...process.env } as Record<string, string>;
+    return Object.assign({}, process.env,
+      cfg.baseUrl ? { ANTHROPIC_BASE_URL: cfg.baseUrl } : {},
+      cfg.apiKey ? { ANTHROPIC_API_KEY: cfg.apiKey } : {},
+      cfg.authToken ? { ANTHROPIC_AUTH_TOKEN: cfg.authToken } : {},
+    ) as Record<string, string>;
+  }
+
+  // ── Memory upsert ───────────────────────────────────────────────────────
+
+  private async runMemoryUpsert(session: OrcdSession): Promise<void> {
+    if (!this.memoryConfig?.enabled || !this.memoryConfig.baseUrl || !this.memoryConfig.apiKey) return;
+
+    const env = this.buildProviderEnv(session.provider);
+    const log = (msg: string) => console.log(`[orcd:${session.id.slice(0, 8)}:mem] ${msg}`);
+
+    log(`extracting memories (server: ${this.memoryConfig.baseUrl})`);
+
+    const result = await upsertMemories({
+      sessionId: session.id,
+      projectPath: session.cwd,
+      projectName: session.cwd.split('/').pop() ?? 'unknown',
+      model: session.model,
+      env,
+      memoryBaseUrl: this.memoryConfig.baseUrl,
+      memoryApiKey: this.memoryConfig.apiKey,
+    });
+
+    log(`done: ${result.factsStored}/${result.factsExtracted} facts stored, ${result.durationMs}ms`);
+  }
+
+  // ── Compaction ──────────────────────────────────────────────────────────
+
+  private async triggerCompaction(session: OrcdSession): Promise<void> {
+    const sid = session.id;
+    const log = (msg: string) => console.log(`[orcd:${sid.slice(0, 8)}:compact] ${msg}`);
+    const env = this.buildProviderEnv(session.provider);
+
+    // Step 1: Memory upsert before compaction (capture all messages)
+    try {
+      await this.runMemoryUpsert(session);
+    } catch (err) {
+      console.error(`[orcd:${sid.slice(0, 8)}:mem] failed (continuing to compaction):`, err);
+    }
+
+    // Step 2: Prepare summary (read-only, safe while session runs)
+    const pct = session.lastContextWindow > 0
+      ? ((session.lastContextTokens / session.lastContextWindow) * 100).toFixed(0)
+      : '?';
+    log(`preparing summary (${session.lastContextTokens}/${session.lastContextWindow} = ${pct}%)`);
+
+    const prepared = await prepareCompaction({
+      sessionId: sid,
+      projectPath: session.cwd,
+      model: session.model,
+      env,
+    });
+
+    if (this.turnActive.has(sid)) {
+      this.pendingSummaries.set(sid, prepared);
+      log(`summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} msgs, ${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — turn active, waiting`);
+    } else {
+      log(`summary ready — session idle, applying now`);
+      const result = await applyCompaction(prepared);
+      log(`applied: ${result.messagesCovered}/${result.messagesBefore} msgs, ${result.summaryChars} chars`);
+    }
+  }
+
+  // ── Session lifecycle hooks (called from handleCreate) ──────────────────
+
+  private attachLifecycleHooks(session: OrcdSession): void {
+    const sid = session.id;
+
+    const hook: SessionEventCallback = (msg) => {
+      if (msg.type === 'stream_event') {
+        this.turnActive.add(sid);
+      }
+
+      if (msg.type === 'result') {
+        this.turnActive.delete(sid);
+
+        // Apply pending compaction at turn end (instant, session idle)
+        const prepared = this.pendingSummaries.get(sid);
+        if (prepared) {
+          this.pendingSummaries.delete(sid);
+          console.log(`[orcd:${sid.slice(0, 8)}:compact] applying pre-computed summary at turn end`);
+          applyCompaction(prepared).then((r) => {
+            console.log(`[orcd:${sid.slice(0, 8)}:compact] applied: ${r.messagesCovered}/${r.messagesBefore} msgs, ${r.summaryChars} chars`);
+          }).catch((err) => {
+            console.error(`[orcd:${sid.slice(0, 8)}:compact] apply failed:`, err);
+          });
+        }
+      }
+
+      if (msg.type === 'context_usage') {
+        // Check threshold for auto-compaction
+        if (
+          session.summarizeThreshold > 0 &&
+          msg.contextWindow > 0 &&
+          !this.compacting.has(sid) &&
+          !this.pendingSummaries.has(sid) &&
+          msg.contextTokens / msg.contextWindow >= session.summarizeThreshold
+        ) {
+          this.compacting.add(sid);
+          const pct = ((msg.contextTokens / msg.contextWindow) * 100).toFixed(0);
+          console.log(`[orcd:${sid.slice(0, 8)}:compact] threshold hit (${pct}%), starting`);
+          this.triggerCompaction(session).catch((err) => {
+            console.error(`[orcd:${sid.slice(0, 8)}:compact] failed:`, err);
+          }).finally(() => {
+            this.compacting.delete(sid);
+          });
+        }
+      }
+
+      if (msg.type === 'session_exit') {
+        // Cleanup
+        this.compacting.delete(sid);
+        this.pendingSummaries.delete(sid);
+        this.turnActive.delete(sid);
+
+        // Auto memory upsert on exit
+        this.runMemoryUpsert(session).catch((err) => {
+          console.error(`[orcd:${sid.slice(0, 8)}:mem] exit upsert failed:`, err);
+        });
+      }
+    };
+
+    session.subscribe(hook);
   }
 }

@@ -29,7 +29,12 @@ export class OrcdSession {
   readonly model: string;
   readonly provider: string;
   readonly contextWindow: number | undefined;
+  readonly summarizeThreshold: number;
   readonly buffer: RingBuffer<unknown>;
+
+  /** Last known context token count (updated after each result) */
+  lastContextTokens = 0;
+  lastContextWindow = 0;
 
   private activeQuery: Query | null = null;
   private subscribers = new Set<SessionEventCallback>();
@@ -41,12 +46,14 @@ export class OrcdSession {
     bufferSize?: number;
     sessionId?: string;  // For resume — use existing CC session UUID
     contextWindow?: number;
+    summarizeThreshold?: number;
   }) {
     this.id = opts.sessionId ?? randomUUID();
     this.cwd = opts.cwd;
     this.model = opts.model;
     this.provider = opts.provider;
     this.contextWindow = opts.contextWindow;
+    this.summarizeThreshold = opts.summarizeThreshold ?? 0;
     this.buffer = new RingBuffer(opts.bufferSize ?? 1000);
   }
 
@@ -168,6 +175,8 @@ export class OrcdSession {
               const first = Object.values(mu)[0];
               if (first?.contextWindow) ctxWindow = first.contextWindow;
             }
+            this.lastContextTokens = lastInputTokens;
+            this.lastContextWindow = ctxWindow;
             const cuMsg: ContextUsageMessage = {
               type: 'context_usage',
               sessionId: this.id,

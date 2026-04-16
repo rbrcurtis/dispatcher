@@ -25,6 +25,7 @@ export interface MemoryUpsertOpts {
   projectPath: string;
   projectName: string;
   model: string;
+  env?: Record<string, string>;
   memoryBaseUrl: string;
   memoryApiKey: string;
   maxExcerptChars?: number;
@@ -64,8 +65,9 @@ Here is the conversation to extract facts from:
 async function extractFacts(
   excerpt: string,
   model: string,
+  env?: Record<string, string>,
 ): Promise<MemoryFact[]> {
-  const { text } = await queryAgentSdk(EXTRACTION_PROMPT + excerpt, model);
+  const { text } = await queryAgentSdk(EXTRACTION_PROMPT + excerpt, model, env);
 
   const facts: MemoryFact[] = [];
   for (const line of text.split('\n')) {
@@ -156,7 +158,7 @@ export async function upsertMemories(opts: MemoryUpsertOpts): Promise<MemoryUpse
 
   console.error(`${LOG} extracting facts from ${messages.length} messages (${excerpt.length} chars)`);
 
-  const facts = await extractFacts(excerpt, model);
+  const facts = await extractFacts(excerpt, model, opts.env);
   console.error(`${LOG} extracted ${facts.length} facts`);
 
   const results = await Promise.allSettled(

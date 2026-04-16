@@ -99,7 +99,7 @@ export async function initBackend(): Promise<{
   }
 
   // --- OC controllers + OrcdClient ---
-  const { initOrcdRouter, trackSession, registerAutoStart, registerWorktreeCleanup, registerMemoryUpsertOnComplete } =
+  const { initOrcdRouter, trackSession, registerAutoStart, registerWorktreeCleanup, registerMemoryUpsertOnArchive } =
     await import('./controllers/card-sessions');
   const initState = await import('./init-state');
 
@@ -107,8 +107,12 @@ export async function initBackend(): Promise<{
   if (!client) {
     const { OrcdClient } = await import('./orcd-client');
     client = new OrcdClient();
-    await client.connect();
     initState.setOrcdClient(client);
+    try {
+      await client.connect();
+    } catch {
+      console.warn('[orcd-client] initial connect failed, will retry in background');
+    }
   }
 
   // Register the single global orcd message router
@@ -128,8 +132,8 @@ export async function initBackend(): Promise<{
   }
 
   registerAutoStart();
+  registerMemoryUpsertOnArchive();
   registerWorktreeCleanup();
-  registerMemoryUpsertOnComplete();
   console.log('[orcd] OrcdClient connected, router + listeners registered');
 
   // Move stale running cards to review

@@ -144,7 +144,7 @@ export function wsServerPlugin(): Plugin {
             if (initState.initialized) return;
 
             const { OrcdClient } = await import('../orcd-client');
-            const { initOrcdRouter, reconcileRunningCards, registerAutoStart, registerWorktreeCleanup } =
+            const { initOrcdRouter, reconcileRunningCards, registerAutoStart, registerWorktreeCleanup, registerMemoryUpsertOnArchive } =
               await import('../controllers/card-sessions');
 
             let client = initState.getOrcdClient();
@@ -172,6 +172,7 @@ export function wsServerPlugin(): Plugin {
             });
 
             registerAutoStart();
+            registerMemoryUpsertOnArchive();
             registerWorktreeCleanup();
             console.log('[orcd] OrcdClient connected, router + listeners registered');
 

@@ -21,10 +21,11 @@ export interface CompactResult {
   durationMs: number;
 }
 
-interface CompactOpts {
+export interface CompactOpts {
   sessionId: string;
   projectPath: string;
   model: string;
+  env?: Record<string, string>;
   ratio?: number;
   maxExcerptChars?: number;
   dryRun?: boolean;
@@ -47,7 +48,13 @@ export function computeSlug(realPath: string): string {
 }
 
 export async function resolveJsonlPath(sessionId: string, projectPath: string): Promise<string> {
-  const real = await realpath(projectPath);
+  let real: string;
+  try {
+    real = await realpath(projectPath);
+  } catch {
+    // Worktree may have been deleted — use path as-is for slug computation
+    real = projectPath;
+  }
   const slug = computeSlug(real);
   return join(homedir(), '.claude', 'projects', slug, `${sessionId}.jsonl`);
 }
@@ -165,6 +172,7 @@ export function buildExcerpt(msgs: IndexedMessage[], maxChars: number): string {
 export async function queryAgentSdk(
   prompt: string,
   model: string,
+  env?: Record<string, string>,
 ): Promise<{ text: string; durationMs: number }> {
   const { query: sdkQuery } = await import('@anthropic-ai/claude-agent-sdk');
   const t0 = Date.now();
@@ -177,6 +185,7 @@ export async function queryAgentSdk(
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       pathToClaudeCodeExecutable: '/home/ryan/.local/bin/claude',
+      ...(env ? { env } : {}),
     },
   });
 
@@ -220,8 +229,9 @@ Here is the conversation to summarize:
 async function summarize(
   excerpt: string,
   model: string,
+  env?: Record<string, string>,
 ): Promise<{ summary: string; durationMs: number }> {
-  const { text: summary, durationMs } = await queryAgentSdk(SUMMARIZE_PROMPT + excerpt, model);
+  const { text: summary, durationMs } = await queryAgentSdk(SUMMARIZE_PROMPT + excerpt, model, env);
   return { summary, durationMs };
 }
 
@@ -312,7 +322,7 @@ export async function prepareCompaction(opts: CompactOpts): Promise<PreparedComp
     };
   }
 
-  const { summary, durationMs } = await summarize(excerpt, model);
+  const { summary, durationMs } = await summarize(excerpt, model, opts.env);
 
   return {
     sessionId,

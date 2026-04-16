@@ -1,21 +1,12 @@
 import { Card } from '../models/Card';
-import { Project } from '../models/Project';
 import { messageBus, type MessageBus } from '../bus';
 import { AppDataSource } from '../models/index';
 import type { OrcdMessage } from '../../shared/orcd-protocol';
 import type { OrcdClient } from '../orcd-client';
-import { resolveWorkDir } from '../../shared/worktree';
-import { prepareCompaction, applyCompaction, type PreparedCompaction } from '../../lib/session-compactor';
-import { upsertMemories } from '../../lib/memory-upsert';
-import { loadConfig } from '../../orcd/config';
 
 // ── Session → Card routing map ───────────────────────────────────────────────
 
 const sessionCardMap = new Map<string, number>();
-const compactingCards = new Set<number>();
-const pendingSummaries = new Map<number, PreparedCompaction>();
-/** Cards that currently have a turn in progress (stream_event seen, no result yet) */
-const turnActive = new Set<number>();
 
 /** Register a sessionId → cardId mapping so the global router can route messages. */
 export function trackSession(cardId: number, sessionId: string): void {
@@ -30,11 +21,6 @@ export function untrackSession(sessionId: string): void {
 
 // ── Global orcd message router ───────────────────────────────────────────────
 
-/**
- * Register a single global onMessage handler on the OrcdClient.
- * Routes messages by looking up sessionId → cardId in the map.
- * Call once at startup — survives for the process lifetime.
- */
 let routerInitialized = false;
 
 export function initOrcdRouter(
@@ -51,7 +37,6 @@ export function initOrcdRouter(
     if (cardId == null) return;
 
     if (msg.type === 'stream_event') {
-      turnActive.add(cardId);
       const sdkEvent = msg.event as Record<string, unknown>;
       bus.publish(`card:${cardId}:sdk`, sdkEvent);
 
@@ -81,7 +66,6 @@ export function initOrcdRouter(
     }
 
     if (msg.type === 'result') {
-      turnActive.delete(cardId);
       const result = msg.result as Record<string, unknown>;
       bus.publish(`card:${cardId}:sdk`, result);
 
@@ -90,21 +74,6 @@ export function initOrcdRouter(
         card.turnsCompleted = (card.turnsCompleted ?? 0) + 1;
         card.updatedAt = new Date().toISOString();
         await repo().save(card);
-
-        // Apply pre-computed compaction at turn end (instant — session is idle)
-        const prepared = pendingSummaries.get(cardId);
-        if (prepared) {
-          pendingSummaries.delete(cardId);
-          console.log(`[compact:${cardId}] applying pre-computed summary at turn end`);
-          applyCompaction(prepared).then((r) => {
-            console.log(
-              `[compact:${cardId}] applied: ${r.messagesCovered}/${r.messagesBefore} messages, ` +
-              `${r.summaryChars} chars summary`,
-            );
-          }).catch((err) => {
-            console.error(`[compact:${cardId}] apply failed:`, err);
-          });
-        }
       }
     }
 
@@ -115,23 +84,6 @@ export function initOrcdRouter(
         card.contextWindow = msg.contextWindow;
         card.updatedAt = new Date().toISOString();
         await repo().save(card);
-
-        // Start background compaction immediately — prepareCompaction is read-only
-        if (
-          card.summarizeThreshold > 0 &&
-          card.contextWindow > 0 &&
-          !compactingCards.has(cardId) &&
-          !pendingSummaries.has(cardId) &&
-          card.contextTokens / card.contextWindow >= card.summarizeThreshold
-        ) {
-          compactingCards.add(cardId);
-          console.log(`[compact:${cardId}] starting background compaction (${((card.contextTokens / card.contextWindow) * 100).toFixed(0)}%)`);
-          triggerCompaction(cardId, card).catch((err) => {
-            console.error(`[compact:${cardId}] failed:`, err);
-          }).finally(() => {
-            compactingCards.delete(cardId);
-          });
-        }
       }
       bus.publish(`card:${cardId}:context`, {
         contextTokens: msg.contextTokens,
@@ -148,11 +100,6 @@ export function initOrcdRouter(
     }
 
     if (msg.type === 'session_exit') {
-      // Clean up compaction state for this card
-      compactingCards.delete(cardId);
-      pendingSummaries.delete(cardId);
-      turnActive.delete(cardId);
-
       await handleSessionExit(cardId, bus);
       untrackSession(msg.sessionId);
     }
@@ -184,11 +131,6 @@ async function handleSessionExit(
 
 // ── Reconciliation ──────────────────────────────────────────────────────────
 
-/**
- * Check all running cards against orcd's active sessions.
- * Cards whose sessions are no longer in orcd get moved to review.
- * Called at startup and on OrcdClient reconnect (orcd restart).
- */
 export async function reconcileRunningCards(
   client: OrcdClient,
   bus: MessageBus = messageBus,
@@ -259,6 +201,7 @@ export function registerAutoStart(bus: MessageBus = messageBus): void {
         model: fullCard.model,
         sessionId: fullCard.sessionId ?? undefined,
         contextWindow: fullCard.contextWindow,
+        summarizeThreshold: fullCard.summarizeThreshold,
       });
 
       fullCard.sessionId = sessionId;
@@ -310,86 +253,7 @@ export function registerWorktreeCleanup(bus: MessageBus = messageBus): void {
   });
 }
 
-/**
- * Run memory upsert for a card — extract facts from conversation and store in memory API.
- * Returns true if upsert ran, false if skipped (not configured / no session).
- */
-async function runMemoryUpsert(cardId: number, card: Card): Promise<boolean> {
-  if (!card.sessionId || !card.projectId) return false;
-
-  const proj = await Project.findOneBy({ id: card.projectId });
-  if (!proj) return false;
-
-  const config = await loadConfig();
-  const memBaseUrl = proj.memoryBaseUrl ?? config.memoryUpsert?.baseUrl;
-  const memApiKey = proj.memoryApiKey ?? config.memoryUpsert?.apiKey;
-  const memEnabled = config.memoryUpsert?.enabled !== false && !!memBaseUrl && !!memApiKey;
-
-  if (!memEnabled) return false;
-
-  const cwd = resolveWorkDir(card.worktreeBranch ?? null, proj.path);
-  console.log(`[memory-upsert:${cardId}] extracting memories (server: ${memBaseUrl})`);
-
-  const upsertResult = await upsertMemories({
-    sessionId: card.sessionId,
-    projectPath: cwd,
-    projectName: proj.name,
-    model: card.model,
-    memoryBaseUrl: memBaseUrl!,
-    memoryApiKey: memApiKey!,
-  });
-
-  console.log(
-    `[memory-upsert:${cardId}] done: ${upsertResult.factsStored}/${upsertResult.factsExtracted} facts stored, ${upsertResult.durationMs}ms`,
-  );
-  return true;
-}
-
-async function triggerCompaction(cardId: number, card: Card): Promise<void> {
-  if (!card.sessionId || !card.projectId) return;
-
-  const proj = await Project.findOneBy({ id: card.projectId });
-  if (!proj) return;
-
-  // Step 1: Memory upsert — extract facts from ALL messages since last boundary
-  try {
-    await runMemoryUpsert(cardId, card);
-  } catch (err) {
-    console.error(`[memory-upsert:${cardId}] failed (continuing to compaction):`, err);
-  }
-
-  // Step 2: Prepare compaction summary in background (no file writes)
-  const cwd = resolveWorkDir(card.worktreeBranch ?? null, proj.path);
-  console.log(`[compact:${cardId}] preparing summary in background (${card.contextTokens}/${card.contextWindow} = ${((card.contextTokens / card.contextWindow) * 100).toFixed(0)}%)`);
-
-  const prepared = await prepareCompaction({
-    sessionId: card.sessionId,
-    projectPath: cwd,
-    model: card.model,
-  });
-
-  if (turnActive.has(cardId)) {
-    // Turn in progress — store for result handler to apply when turn ends
-    pendingSummaries.set(cardId, prepared);
-    console.log(
-      `[compact:${cardId}] summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} messages, ` +
-      `${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — turn active, waiting for idle`,
-    );
-  } else {
-    // Session is idle — apply immediately
-    console.log(
-      `[compact:${cardId}] summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} messages, ` +
-      `${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — session idle, applying now`,
-    );
-    const result = await applyCompaction(prepared);
-    console.log(
-      `[compact:${cardId}] applied: ${result.messagesCovered}/${result.messagesBefore} messages, ` +
-      `${result.summaryChars} chars summary`,
-    );
-  }
-}
-
-export function registerMemoryUpsertOnComplete(bus: MessageBus = messageBus): void {
+export function registerMemoryUpsertOnArchive(bus: MessageBus = messageBus): void {
   bus.subscribe('board:changed', async (payload) => {
     const { card, oldColumn, newColumn } = payload as {
       card: Card | null;
@@ -398,16 +262,18 @@ export function registerMemoryUpsertOnComplete(bus: MessageBus = messageBus): vo
     };
     if (!card) return;
 
-    // Only on first transition to done/archive — skip done→archive (already upserted)
+    // Only on first transition to done/archive — skip done→archive (already upserted by orcd on exit)
     const isTerminal = newColumn === 'done' || newColumn === 'archive';
     const wasTerminal = oldColumn === 'done' || oldColumn === 'archive';
     if (!isTerminal || wasTerminal) return;
+    if (!card.sessionId) return;
 
-    if (!card.sessionId || !card.projectId) return;
+    const initState = await import('../init-state');
+    const client = initState.getOrcdClient();
+    if (!client) return;
 
-    runMemoryUpsert(card.id, card).catch((err) => {
-      console.error(`[memory-upsert:${card.id}] on-complete failed:`, err);
-    });
+    console.log(`[oc:memory] requesting upsert for card ${card.id} (${oldColumn} → ${newColumn})`);
+    client.memoryUpsert(card.sessionId);
   });
 }
 

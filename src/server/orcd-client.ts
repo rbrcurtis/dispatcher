@@ -135,6 +135,7 @@ export class OrcdClient {
     sessionId?: string;
     env?: Record<string, string>;
     contextWindow?: number;
+    summarizeThreshold?: number;
   }): Promise<string> {
     return new Promise((resolve) => {
       const tempCb = (sessionId: string) => resolve(sessionId);
@@ -149,6 +150,7 @@ export class OrcdClient {
         sessionId: opts.sessionId,
         env: opts.env,
         contextWindow: opts.contextWindow,
+        summarizeThreshold: opts.summarizeThreshold,
       });
 
       // The session_created message will have the sessionId.
@@ -191,6 +193,13 @@ export class OrcdClient {
    */
   setEffort(sessionId: string, effort: string): void {
     this.send({ action: 'set_effort', sessionId, effort });
+  }
+
+  /**
+   * Request memory upsert for a session (extract facts → store in memory API).
+   */
+  memoryUpsert(sessionId: string): void {
+    this.send({ action: 'memory_upsert', sessionId });
   }
 
   /**

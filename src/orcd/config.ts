@@ -43,11 +43,11 @@ export function parseConfig(yamlStr: string, env: Record<string, string | undefi
 
   const providers: Record<string, ProviderConfig> = {};
   for (const [name, p] of Object.entries(raw.providers as Record<string, Record<string, unknown>>)) {
-    if (!p.baseUrl || !p.models) {
-      throw new Error(`config: provider "${name}" requires baseUrl and models`);
+    if (!p.models) {
+      throw new Error(`config: provider "${name}" requires models`);
     }
     providers[name] = {
-      baseUrl: resolveEnvVars(String(p.baseUrl), env),
+      baseUrl: p.baseUrl ? resolveEnvVars(String(p.baseUrl), env) : '',
       apiKey: resolveEnvVars(String(p.apiKey ?? ''), env),
       ...(p.authToken ? { authToken: resolveEnvVars(String(p.authToken), env) } : {}),
       models: (p.models as string[]).map(String),

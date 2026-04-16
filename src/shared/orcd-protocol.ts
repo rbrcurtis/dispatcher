@@ -10,6 +10,7 @@ export interface CreateAction {
   sessionId?: string;    // Resume existing session
   env?: Record<string, string>;  // ANTHROPIC_BASE_URL, ANTHROPIC_API_KEY
   contextWindow?: number;
+  summarizeThreshold?: number;  // 0-1, fraction of context window to trigger compaction
 }
 
 export interface MessageAction {
@@ -44,6 +45,11 @@ export interface CancelAction {
   sessionId: string;
 }
 
+export interface MemoryUpsertAction {
+  action: 'memory_upsert';
+  sessionId: string;
+}
+
 export type OrcdAction =
   | CreateAction
   | MessageAction
@@ -51,7 +57,8 @@ export type OrcdAction =
   | SubscribeAction
   | UnsubscribeAction
   | ListAction
-  | CancelAction;
+  | CancelAction
+  | MemoryUpsertAction;
 
 // ── orcd → Client ────────────────────────────────────────────────────────────
 
