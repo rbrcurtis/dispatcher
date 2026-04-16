@@ -21,6 +21,7 @@ describe('cardSchema', () => {
       turnsCompleted: 0,
       contextTokens: 0,
       contextWindow: 200000,
+      summarizeThreshold: 0.7,
       createdAt: '2024-01-01T00:00:00',
       updatedAt: '2024-01-01T00:00:00',
     }
@@ -43,6 +44,7 @@ describe('cardSchema', () => {
       model: 'sonnet',
       provider: 'anthropic',
       thinkingLevel: 'off',
+      summarizeThreshold: 0.7,
       promptsSent: 0,
       turnsCompleted: 0,
       contextTokens: 0,
@@ -69,6 +71,7 @@ describe('cardSchema', () => {
       model: 'sonnet',
       provider: 'anthropic',
       thinkingLevel: 'off',
+      summarizeThreshold: 0.7,
       promptsSent: 0,
       turnsCompleted: 0,
       contextTokens: 0,

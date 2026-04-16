@@ -13,8 +13,9 @@ import { loadConfig } from '../../orcd/config';
 
 const sessionCardMap = new Map<string, number>();
 const compactingCards = new Set<number>();
-const pendingCompaction = new Set<number>();
 const pendingSummaries = new Map<number, PreparedCompaction>();
+/** Cards that currently have a turn in progress (stream_event seen, no result yet) */
+const turnActive = new Set<number>();
 
 /** Register a sessionId → cardId mapping so the global router can route messages. */
 export function trackSession(cardId: number, sessionId: string): void {
@@ -50,6 +51,7 @@ export function initOrcdRouter(
     if (cardId == null) return;
 
     if (msg.type === 'stream_event') {
+      turnActive.add(cardId);
       const sdkEvent = msg.event as Record<string, unknown>;
       bus.publish(`card:${cardId}:sdk`, sdkEvent);
 
@@ -79,6 +81,7 @@ export function initOrcdRouter(
     }
 
     if (msg.type === 'result') {
+      turnActive.delete(cardId);
       const result = msg.result as Record<string, unknown>;
       bus.publish(`card:${cardId}:sdk`, result);
 
@@ -93,24 +96,13 @@ export function initOrcdRouter(
         if (prepared) {
           pendingSummaries.delete(cardId);
           console.log(`[compact:${cardId}] applying pre-computed summary at turn end`);
-          applyCompaction(prepared).then((result) => {
+          applyCompaction(prepared).then((r) => {
             console.log(
-              `[compact:${cardId}] applied: ${result.messagesCovered}/${result.messagesBefore} messages, ` +
-              `${result.summaryChars} chars summary`,
+              `[compact:${cardId}] applied: ${r.messagesCovered}/${r.messagesBefore} messages, ` +
+              `${r.summaryChars} chars summary`,
             );
           }).catch((err) => {
             console.error(`[compact:${cardId}] apply failed:`, err);
-          });
-        }
-
-        // Kick off background prepare for next compaction cycle
-        if (pendingCompaction.has(cardId) && !compactingCards.has(cardId)) {
-          pendingCompaction.delete(cardId);
-          compactingCards.add(cardId);
-          triggerCompaction(cardId, card).catch((err) => {
-            console.error(`[compact:${cardId}] failed:`, err);
-          }).finally(() => {
-            compactingCards.delete(cardId);
           });
         }
       }
@@ -124,17 +116,21 @@ export function initOrcdRouter(
         card.updatedAt = new Date().toISOString();
         await repo().save(card);
 
-        // Mark for compaction — actual compaction deferred to turn end (result event)
-        // to avoid racing with active JSONL writes
+        // Start background compaction immediately — prepareCompaction is read-only
         if (
           card.summarizeThreshold > 0 &&
           card.contextWindow > 0 &&
           !compactingCards.has(cardId) &&
-          !pendingCompaction.has(cardId) &&
+          !pendingSummaries.has(cardId) &&
           card.contextTokens / card.contextWindow >= card.summarizeThreshold
         ) {
-          pendingCompaction.add(cardId);
-          console.log(`[compact:${cardId}] marked for compaction at turn end (${((card.contextTokens / card.contextWindow) * 100).toFixed(0)}%)`);
+          compactingCards.add(cardId);
+          console.log(`[compact:${cardId}] starting background compaction (${((card.contextTokens / card.contextWindow) * 100).toFixed(0)}%)`);
+          triggerCompaction(cardId, card).catch((err) => {
+            console.error(`[compact:${cardId}] failed:`, err);
+          }).finally(() => {
+            compactingCards.delete(cardId);
+          });
         }
       }
       bus.publish(`card:${cardId}:context`, {
@@ -152,6 +148,11 @@ export function initOrcdRouter(
     }
 
     if (msg.type === 'session_exit') {
+      // Clean up compaction state for this card
+      compactingCards.delete(cardId);
+      pendingSummaries.delete(cardId);
+      turnActive.delete(cardId);
+
       await handleSessionExit(cardId, bus);
       untrackSession(msg.sessionId);
     }
@@ -367,12 +368,25 @@ async function triggerCompaction(cardId: number, card: Card): Promise<void> {
     model: card.model,
   });
 
-  // Store the prepared summary — it will be applied at the next turn end
-  pendingSummaries.set(cardId, prepared);
-  console.log(
-    `[compact:${cardId}] summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} messages, ` +
-    `${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — waiting for turn end to apply`
-  );
+  if (turnActive.has(cardId)) {
+    // Turn in progress — store for result handler to apply when turn ends
+    pendingSummaries.set(cardId, prepared);
+    console.log(
+      `[compact:${cardId}] summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} messages, ` +
+      `${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — turn active, waiting for idle`,
+    );
+  } else {
+    // Session is idle — apply immediately
+    console.log(
+      `[compact:${cardId}] summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} messages, ` +
+      `${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — session idle, applying now`,
+    );
+    const result = await applyCompaction(prepared);
+    console.log(
+      `[compact:${cardId}] applied: ${result.messagesCovered}/${result.messagesBefore} messages, ` +
+      `${result.summaryChars} chars summary`,
+    );
+  }
 }
 
 export function registerMemoryUpsertOnComplete(bus: MessageBus = messageBus): void {

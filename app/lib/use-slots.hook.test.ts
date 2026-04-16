@@ -232,13 +232,13 @@ describe('flash', () => {
     expect(result.current.flashSlot).toBe(1);
   });
 
-  it('does not flash when a slot empties', () => {
+  it('flashes on closeSlot to confirm action', () => {
     const stored: SlotState[] = [{ type: 'manual', cardId: 1 }, { type: 'empty' }];
     localStorage.setItem('dispatcher-slots', JSON.stringify(stored));
     const cards = [makeCard({ id: 1, projectId: 10 })];
     const { result } = renderHook(() => useSlots(2, cards));
     act(() => result.current.closeSlot(0));
-    expect(result.current.flashSlot).toBeNull();
+    expect(result.current.flashSlot).toBe(0);
   });
 
   it('clearFlash resets flashSlot to null', () => {
@@ -289,10 +289,10 @@ describe('actions through hook', () => {
     expect(result.current.slots).toBe(before); // same reference — no mutation
   });
 
-  it('onCardCreated places in slot 0 when no pinned slot for project', () => {
+  it('onCardCreated releases hotseat when no pinned slot for project', () => {
     const { result } = renderHook(() => useSlots(2, []));
     act(() => result.current.onCardCreated(99, 20));
-    expect(result.current.slots[0]).toEqual({ type: 'manual', cardId: 99 });
+    expect(result.current.slots[0]).toEqual({ type: 'empty' });
   });
 
   it('dropCard preserves pin when project matches', () => {
