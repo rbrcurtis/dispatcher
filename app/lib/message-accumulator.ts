@@ -80,12 +80,16 @@ export class MessageAccumulator {
   currentBlocks: ContentBlock[] = [];
   subagents = new Map<string, SubagentState>();
   retryAfterMs: number | null = null;
+  private historyPendingResultTimestamp?: number;
+  private historyTurnCount = 0;
 
   constructor() {
-    makeAutoObservable(this, {
+    makeAutoObservable<this, 'historyPendingResultTimestamp' | 'historyTurnCount'>(this, {
       conversation: observable.shallow,
       currentBlocks: observable.shallow,
       subagents: observable,
+      historyPendingResultTimestamp: false,
+      historyTurnCount: false,
     });
   }
 
@@ -141,20 +145,28 @@ export class MessageAccumulator {
   handleHistoryMessage(msg: HistoryMessage): void {
     switch (msg.type) {
       case 'user': {
+        const timestamp = normalizeTimestamp(msg.timestamp);
         const { content } = msg.message;
         if (typeof content === 'string') {
-          this.conversation.push({ kind: 'user', content, timestamp: normalizeTimestamp(msg.timestamp) });
+          this.finalizePendingHistoryTurn(timestamp);
+          this.conversation.push({ kind: 'user', content, timestamp });
         } else if (Array.isArray(content)) {
-          // Array content: extract text blocks (user prompts), skip tool_result blocks
+          // Array content may be a real prompt with text blocks, or an internal
+          // tool_result message persisted with role=user. Only treat text-bearing
+          // entries as true user turn boundaries.
           const text = content
             .filter((b) => b.type === 'text')
             .map((b) => (b as { text?: string }).text ?? '')
             .join('\n');
-          if (text) this.conversation.push({ kind: 'user', content: text, timestamp: normalizeTimestamp(msg.timestamp) });
+          if (text) {
+            this.finalizePendingHistoryTurn(timestamp);
+            this.conversation.push({ kind: 'user', content: text, timestamp });
+          }
         }
         break;
       }
       case 'assistant': {
+        const assistantTimestamp = normalizeTimestamp(msg.timestamp);
         const blocks: ContentBlock[] = msg.message.content
           .filter((b: HistoryAssistantContentBlock) => {
             // SDK session JSONL records tool_use blocks twice: once with input when
@@ -184,14 +196,18 @@ export class MessageAccumulator {
             return new ContentBlock({ type: 'text', content: b.text ?? '', complete: true });
           });
         if (blocks.length > 0) {
-          this.conversation.push({ kind: 'blocks', blocks, model: msg.message.model, timestamp: normalizeTimestamp(msg.timestamp) });
+          this.backfillHistoryInitModel(msg.message.model);
+          this.conversation.push({ kind: 'blocks', blocks, model: msg.message.model, timestamp: assistantTimestamp });
+          this.historyPendingResultTimestamp = assistantTimestamp;
         }
         break;
       }
       case 'system':
         if (msg.subtype === 'init') {
+          this.finalizePendingHistoryTurn(normalizeTimestamp(msg.timestamp));
           this.conversation.push({ kind: 'system', subtype: 'init', model: msg.model, timestamp: normalizeTimestamp(msg.timestamp) });
         } else if (msg.subtype === 'compact_boundary') {
+          this.finalizePendingHistoryTurn(normalizeTimestamp(msg.timestamp));
           this.conversation.push({ kind: 'compact', timestamp: normalizeTimestamp(msg.timestamp) });
         }
         break;
@@ -324,10 +340,44 @@ export class MessageAccumulator {
     }
   }
 
+  flushHistory(): void {
+    this.finalizePendingHistoryTurn();
+  }
+
+  private finalizePendingHistoryTurn(timestamp = this.historyPendingResultTimestamp): void {
+    if (this.historyPendingResultTimestamp == null) return;
+    this.historyTurnCount += 1;
+    this.conversation.push({
+      kind: 'result',
+      timestamp,
+      data: {
+        subtype: 'success',
+        costUsd: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        numTurns: this.historyTurnCount,
+        durationMs: 0,
+      },
+    });
+    this.historyPendingResultTimestamp = undefined;
+  }
+
+  private backfillHistoryInitModel(model: string | undefined): void {
+    if (!model) return;
+    const initEntry = this.conversation.find(
+      (entry): entry is Extract<ConversationEntry, { kind: 'system' }> => entry.kind === 'system' && entry.subtype === 'init',
+    );
+    if (initEntry && !initEntry.model) initEntry.model = model;
+  }
+
   clear(): void {
     this.conversation = [];
     this.currentBlocks = [];
     this.subagents.clear();
     this.retryAfterMs = null;
+    this.historyPendingResultTimestamp = undefined;
+    this.historyTurnCount = 0;
   }
 }

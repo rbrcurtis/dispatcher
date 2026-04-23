@@ -165,14 +165,24 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="absolute top-2.5 right-1 p-1 rounded text-muted-foreground hover:text-foreground"
+      className="self-start shrink-0 p-1 rounded translate-x-0.5 text-muted-foreground hover:text-foreground"
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
     </button>
   );
 }
 
+function CopyableRow({ children, copyText }: { children: React.ReactNode; copyText: string }) {
+  return (
+    <div className="flex items-start gap-1.5 min-w-0 max-w-full overflow-hidden">
+      <div className="flex-1 min-w-0">{children}</div>
+      <CopyButton text={copyText} />
+    </div>
+  );
+}
+
 // --- Thinking block (always visible, muted) ---
+
 
 function ThinkingBlock({ thinking }: { thinking: string }) {
   return (
@@ -193,6 +203,9 @@ type Props = {
 function formatEntryTime(timestamp?: number): string | null {
   if (!timestamp) return null;
   return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(timestamp));
@@ -306,11 +319,12 @@ function BlocksEntry({ blocks, accentColor }: { blocks: ContentBlock[]; accentCo
 function TextBlock({ content, accentColor }: { content: string; accentColor?: string | null }) {
   const linkColor = accentColor || 'var(--neon-cyan)';
   return (
-    <div className="group relative space-y-2 py-2 min-w-0 max-w-full overflow-hidden">
-      <CopyButton text={content} />
-      <div className="text-sm text-foreground min-w-0 break-words">
-        <Markdown text={content} linkColor={linkColor} />
-      </div>
+    <div className="group py-2 min-w-0 max-w-full overflow-hidden">
+      <CopyableRow copyText={content}>
+        <div className="text-sm text-foreground min-w-0 break-words">
+          <Markdown text={content} linkColor={linkColor} />
+        </div>
+      </CopyableRow>
     </div>
   );
 }
@@ -393,23 +407,26 @@ function UserBlock({ content, accentColor }: { content: string; accentColor?: st
   return (
     <div className="flex justify-end my-2 min-w-0">
       <div
-        className="group relative text-sm text-foreground bg-elevated rounded-lg pl-3 pr-8 py-2 max-w-[85%] border-l-2 min-w-0 overflow-hidden"
+        className="group text-sm text-foreground bg-elevated rounded-lg pl-3 pr-1 py-2 max-w-[85%] border-l-2 min-w-0 overflow-hidden"
         style={{ borderLeftColor: accentVar }}
       >
-        <CopyButton text={displayText || content} />
-        {attachedFiles.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {attachedFiles.map((f, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-xs text-muted-foreground border border-border"
-              >
-                {f.name}
-              </span>
-            ))}
+        <CopyableRow copyText={displayText || content}>
+          <div className="min-w-0">
+            {attachedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {attachedFiles.map((f, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted text-xs text-muted-foreground border border-border"
+                  >
+                    {f.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            {displayText && <span className="whitespace-pre-wrap break-words">{renderWithSlashCommands(displayText)}</span>}
           </div>
-        )}
-        {displayText && <span className="whitespace-pre-wrap break-words">{renderWithSlashCommands(displayText)}</span>}
+        </CopyableRow>
       </div>
     </div>
   );

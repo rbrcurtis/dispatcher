@@ -87,6 +87,7 @@ export class SessionStore {
       for (const msg of messages) {
         s.accumulator.handleHistoryMessage(msg as HistoryMessage);
       }
+      s.accumulator.flushHistory();
       s.historyLoaded = true;
     });
   }
