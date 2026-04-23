@@ -165,7 +165,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="self-start shrink-0 p-1 rounded translate-x-0.5 text-muted-foreground hover:text-foreground"
+      className="self-start shrink-0 p-1 rounded -translate-x-0.5 text-muted-foreground hover:text-foreground"
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
     </button>
