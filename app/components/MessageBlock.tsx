@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { memo, useState, useMemo, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Copy, Check } from 'lucide-react';
 import ReactMarkdown, { type Components } from 'react-markdown';
@@ -200,18 +200,20 @@ type Props = {
   accentColor?: string | null;
 };
 
+const ENTRY_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
 function formatEntryTime(timestamp?: number): string | null {
   if (!timestamp) return null;
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(timestamp));
+  return ENTRY_TIME_FORMATTER.format(new Date(timestamp));
 }
 
-export const MessageBlock = observer(function MessageBlock({ entry, index: _index, accentColor }: Props) {
+export const MessageBlock = memo(observer(function MessageBlock({ entry, index: _index, accentColor }: Props) {
   switch (entry.kind) {
     case 'blocks':
       return <BlocksEntry blocks={entry.blocks} accentColor={accentColor} />;
@@ -265,7 +267,7 @@ export const MessageBlock = observer(function MessageBlock({ entry, index: _inde
     default:
       return null;
   }
-});
+}));
 
 // --- Blocks entry: renders each ContentBlock ---
 

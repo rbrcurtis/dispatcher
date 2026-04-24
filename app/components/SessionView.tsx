@@ -1,13 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
-import { Send, Square, Play, AlertCircle, ChevronDown, Paperclip, X, WifiOff } from 'lucide-react';
-import { MessageBlock } from './MessageBlock';
+import { Send, Square, Play, AlertCircle, Paperclip, X, WifiOff } from 'lucide-react';
 import { Button } from '~/components/ui/button';
 import { Textarea } from '~/components/ui/textarea';
 import { Badge } from '~/components/ui/badge';
 import { ContextGauge } from './ContextGauge';
 import { SubagentFeed } from './SubagentFeed';
-import { ScrollArea } from '~/components/ui/scroll-area';
+import { VirtualTranscript } from './VirtualTranscript';
 import { useSessionStore, useCardStore, useConfigStore, useStore } from '~/stores/context';
 import type { FileRef } from '../../src/shared/ws-protocol';
 import { AUTO_COMPACT_RATIO } from '../../src/shared/constants';
@@ -50,19 +49,13 @@ export const SessionView = observer(function SessionView({
 
   const [notification, setNotification] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
   const prevConvLen = useRef(0);
-  const nearBottomRef = useRef(true); // tracks if user is near bottom (for auto-scroll gating)
-  const isStreamingRef = useRef(false); // mirrors isStreaming for ResizeObserver access
   const [compacted, setCompacted] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
 
   const isStreaming = sessionActive || isStarting;
-  isStreamingRef.current = isStreaming;
 
   // Load history / set up bus subscriptions on mount and when sessionId becomes available.
   // Called without sessionId on first render to register card-level bus subscriptions
@@ -110,62 +103,6 @@ export const SessionView = observer(function SessionView({
     }
   }, [sessionStatus, conversation.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ResizeObserver-based auto-scroll: fires after DOM layout changes.
-  // Computes near-bottom inline (scroll events are async and may be stale).
-  useEffect(() => {
-    const content = contentRef.current;
-    const scroll = scrollRef.current;
-    if (!content || !scroll) return;
-
-    let prevHeight = content.scrollHeight;
-    let initialScroll = true;
-    let rafId = 0;
-
-    const ro = new ResizeObserver(() => {
-      const newHeight = content.scrollHeight;
-      if (newHeight <= prevHeight) {
-        prevHeight = newHeight;
-        return;
-      }
-
-      prevHeight = newHeight;
-
-      if (rafId) cancelAnimationFrame(rafId);
-
-      // Only auto-scroll when the session is actively streaming
-      // (new messages or streaming text/tool output), not when the user
-      // toggles a collapsible tool block which resizes content in-place.
-      if (initialScroll || (isStreamingRef.current && nearBottomRef.current)) {
-        initialScroll = false;
-        rafId = requestAnimationFrame(() => {
-          bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-          rafId = 0;
-        });
-      }
-    });
-
-    ro.observe(content);
-    return () => {
-      ro.disconnect();
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, [cardId]);
-
-  // Track scroll position for near-bottom gating + scroll-to-bottom button
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    function onScroll() {
-      if (!el) return;
-      const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-      nearBottomRef.current = gap < 120;
-      setShowScrollBtn(gap >= 60);
-    }
-    onScroll();
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, [cardId]);
-
   // Compaction detection
   useEffect(() => {
     const len = conversation.length;
@@ -181,26 +118,9 @@ export const SessionView = observer(function SessionView({
     prevConvLen.current = len;
   }, [conversation.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Card switch: reset near-bottom so next content triggers instant scroll,
-  // and scroll to bottom immediately if conversation is already loaded
-  useEffect(() => {
-    nearBottomRef.current = true;
-    requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-    });
-  }, [cardId]);
-
   // After reconnect history reload: scroll to bottom once history re-ingests.
   // historyLoaded transitions false→true when resubscribeAll clears + reloads.
   const historyLoaded = session?.historyLoaded ?? false;
-  useEffect(() => {
-    if (historyLoaded && conversation.length > 0) {
-      nearBottomRef.current = true;
-      requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-      });
-    }
-  }, [historyLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showCounters = promptsSent > 0 || turnsCompleted > 0;
   const effectiveWindow = contextWindow * AUTO_COMPACT_RATIO;
@@ -244,47 +164,26 @@ export const SessionView = observer(function SessionView({
     textareaRef.current?.focus();
   }
 
+  const handleShowScrollButtonChange = useCallback((show: boolean) => {
+    setShowScrollBtn(show);
+  }, []);
+
   return (
     <div
       className="flex flex-col flex-1 min-h-0 min-w-0 max-w-full border-t border-border"
       onMouseDown={handlePanelMouseDown}
       onClick={handlePanelClick}
     >
-      {/* Messages — scrollable middle area */}
-      <div className="relative flex-1 min-h-0 min-w-0">
-        <ScrollArea viewportRef={scrollRef} className="h-full">
-          <div ref={contentRef} className="px-3 py-2 space-y-1 min-w-0 max-w-full overflow-x-hidden">
-            {conversation.map((row, i) => (
-              <MessageBlock key={i} entry={row} index={i} accentColor={accentColor} />
-            ))}
-            {currentBlocks.length > 0 && (
-              <MessageBlock
-                entry={{ kind: 'blocks', blocks: currentBlocks }}
-                index={conversation.length}
-                accentColor={accentColor}
-              />
-            )}
-            <div ref={bottomRef} />
-          </div>
-        </ScrollArea>
-        {!session?.historyLoaded && conversation.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <svg className="size-6 animate-spin text-muted-foreground" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-              <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </div>
-        )}
-        {showScrollBtn && (
-          <button
-            type="button"
-            onClick={() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })}
-            className="absolute bottom-3 right-3 size-8 flex items-center justify-center rounded-full bg-muted/80 border border-border text-muted-foreground shadow-md backdrop-blur-sm hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <ChevronDown className="size-4" />
-          </button>
-        )}
-      </div>
+      <VirtualTranscript
+        cardId={cardId}
+        conversation={conversation}
+        currentBlocks={currentBlocks}
+        accentColor={accentColor}
+        historyLoaded={historyLoaded}
+        isStreaming={isStreaming}
+        showScrollButton={showScrollBtn}
+        onShowScrollButtonChange={handleShowScrollButtonChange}
+      />
 
       {/* Status bar — above prompt input */}
       {(isStreaming || conversation.length > 0) && (
