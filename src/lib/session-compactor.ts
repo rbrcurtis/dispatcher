@@ -191,6 +191,8 @@ export interface QueryAgentSdkOpts {
   settingSources?: Options['settingSources'];
   /** Default: 1. Raise only when the caller needs multi-turn tool use. */
   maxTurns?: number;
+  /** Tools that should be removed from the model's context entirely. */
+  disallowedTools?: Options['disallowedTools'];
   /** Default: disabled. */
   thinking?: Options['thinking'];
 }
@@ -217,6 +219,7 @@ export async function queryAgentSdk(
       allowDangerouslySkipPermissions: true,
       pathToClaudeCodeExecutable: '/home/ryan/.local/bin/claude',
       tools: opts.tools ?? [],
+      disallowedTools: opts.disallowedTools,
       mcpServers: opts.mcpServers ?? {},
       settingSources: opts.settingSources ?? [],
       thinking: opts.thinking ?? { type: 'disabled' },

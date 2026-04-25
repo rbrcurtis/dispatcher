@@ -571,6 +571,23 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
   );
 });
 
+const NEW_CARD_DRAFT_DESCRIPTION_KEY = 'orchestrel:new-card-draft-description';
+
+function readNewCardDraftDescription() {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(NEW_CARD_DRAFT_DESCRIPTION_KEY) ?? '';
+}
+
+function writeNewCardDraftDescription(description: string) {
+  if (typeof window === 'undefined') return;
+
+  if (description) {
+    window.localStorage.setItem(NEW_CARD_DRAFT_DESCRIPTION_KEY, description);
+  } else {
+    window.localStorage.removeItem(NEW_CARD_DRAFT_DESCRIPTION_KEY);
+  }
+}
+
 type NewCardProps = {
   column: string;
   onCreated: (id: number, projectId: number | null) => void;
@@ -593,13 +610,15 @@ export const NewCardDetail = observer(function NewCardDetail({
 
   const [selectedColumn, setSelectedColumn] = useState(column);
   const [draft, setDraft] = useState<Draft>(() => {
+    const description = readNewCardDraftDescription();
+
     if (initialProjectId != null) {
       const proj = projectStore.getProject(initialProjectId);
       if (proj) {
         const prov = proj.providerID ?? 'anthropic';
         return {
           title: '',
-          description: '',
+          description,
           projectId: initialProjectId,
           useWorktree: !!proj.defaultWorktree,
           worktreeBranch: null,
@@ -612,7 +631,7 @@ export const NewCardDetail = observer(function NewCardDetail({
     }
     return {
       title: '',
-      description: '',
+      description,
       projectId: null,
       useWorktree: false,
       worktreeBranch: null,
@@ -637,6 +656,10 @@ export const NewCardDetail = observer(function NewCardDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    writeNewCardDraftDescription(draft.description);
+  }, [draft.description]);
+
   async function handleSave() {
     if (!draft.title.trim() || !draft.projectId) return;
     setCreating(true);
@@ -653,6 +676,7 @@ export const NewCardDetail = observer(function NewCardDetail({
         thinkingLevel: 'high',
         summarizeThreshold: draft.summarizeThreshold,
       });
+      writeNewCardDraftDescription('');
       if (selectedColumn === 'running' && draft.projectId && draft.description.trim()) {
         onCreated(card.id, card.projectId ?? null);
       } else {
@@ -682,7 +706,13 @@ export const NewCardDetail = observer(function NewCardDetail({
               ))}
           </SelectContent>
         </Select>
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onClose}
+        >
           <X className="size-4" />
         </Button>
       </div>
@@ -701,7 +731,6 @@ export const NewCardDetail = observer(function NewCardDetail({
                 }
               }}
               placeholder={suggestingTitle ? 'Generating title...' : 'Card title'}
-              disabled={suggestingTitle}
             />
           </div>
 
@@ -879,6 +908,7 @@ export const NewCardDetail = observer(function NewCardDetail({
           <Button
             className="w-full"
             disabled={!draft.title.trim() || !draft.projectId || creating}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleSave}
           >
             {creating ? 'Creating...' : 'Save'}

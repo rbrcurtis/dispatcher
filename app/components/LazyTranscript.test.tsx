@@ -57,6 +57,42 @@ describe('LazyTranscript auto-scroll', () => {
     callbacks.forEach((callback) => callback(0));
   }
 
+  it('does not scroll to bottom when a new entry arrives and the user has scrolled up', () => {
+    const props = {
+      cardId: 1,
+      currentBlocks: [],
+      accentColor: null,
+      historyLoaded: true,
+      isStreaming: true,
+      showScrollButton: false,
+      onShowScrollButtonChange: vi.fn(),
+    };
+
+    const { container, rerender } = render(
+      <LazyTranscript {...props} conversation={conversation(3)} />,
+    );
+    const viewport = container.querySelector('[data-slot="scroll-area-viewport"]') as HTMLElement;
+    const scrollTo = vi.fn((options?: ScrollToOptions | number) => {
+      if (typeof options === 'object') viewport.scrollTop = Number(options.top);
+    });
+    viewport.scrollTo = scrollTo as HTMLDivElement['scrollTo'];
+
+    // Drain initial-render scroll-to-bottom RAFs so they don't leak into the assertion.
+    act(flushAnimationFrames);
+
+    // User scrolls far from the bottom.
+    setViewportMetrics(viewport, { scrollHeight: 1000, clientHeight: 400, scrollTop: 100 });
+    act(() => viewport.dispatchEvent(new Event('scroll')));
+    scrollTo.mockClear();
+
+    // New committed entry arrives.
+    setViewportMetrics(viewport, { scrollHeight: 1250, clientHeight: 400, scrollTop: 100 });
+    rerender(<LazyTranscript {...props} conversation={conversation(4)} />);
+    act(flushAnimationFrames);
+
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
   it('scrolls to the bottom when streaming appends content while already near the bottom', () => {
     const props = {
       cardId: 1,

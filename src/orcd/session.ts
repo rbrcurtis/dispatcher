@@ -24,6 +24,13 @@ function effortToOptions(effort: string | undefined): Pick<Options, 'effort' | '
   return { effort: level };
 }
 
+const SESSION_DISABLED_TOOLS = [
+  'CronCreate',
+  'CronDelete',
+  'CronList',
+  'ScheduleWakeup',
+] as const;
+
 export class OrcdSession {
   readonly id: string;
   state: SessionState = 'running';
@@ -113,6 +120,7 @@ export class OrcdSession {
         model: this.model,
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
+        disallowedTools: [...SESSION_DISABLED_TOOLS],
         settingSources: ['user', 'project'],
         includePartialMessages: true,
         pathToClaudeCodeExecutable: '/home/ryan/.local/bin/claude',

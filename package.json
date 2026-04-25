@@ -7,6 +7,7 @@
     "dev": "pnpm tsoa:generate && cross-env NODE_ENV=development node server.js",
     "start": "cross-env TSX_TSCONFIG_PATH=./tsconfig.node.json tsx server.js",
     "typecheck": "react-router typegen && tsc -b",
+    "test": "cross-env NODE_ENV=test vitest run",
     "lint": "oxlint -c .oxlintrc.json app src",
     "format": "prettier --write .",
     "tsoa:generate": "tsoa spec-and-routes",

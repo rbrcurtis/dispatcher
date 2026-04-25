@@ -49,6 +49,7 @@ export function LazyTranscript({
   const prependAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const hasOlderRef = useRef(false);
   const itemsLenRef = useRef(0);
+  const prevHistoryLoadedRef = useRef(false);
   const [visibleCount, setVisibleCount] = useState(INITIAL_ROWS);
 
   const items = useMemo<ConversationEntry[]>(() => {
@@ -126,11 +127,14 @@ export function LazyTranscript({
     prevItemsLenRef.current = itemsLenRef.current;
     scrollMetricsRef.current = null;
     prependAnchorRef.current = null;
+    prevHistoryLoadedRef.current = false;
     scheduleScrollToBottom();
   }, [cardId, scheduleScrollToBottom]);
 
   useEffect(() => {
-    if (!historyLoaded || conversation.length === 0) return;
+    const wasLoaded = prevHistoryLoadedRef.current;
+    prevHistoryLoadedRef.current = historyLoaded;
+    if (wasLoaded || !historyLoaded || conversation.length === 0) return;
     setVisibleCount(INITIAL_ROWS);
     nearBottomRef.current = true;
     prevItemsLenRef.current = items.length;
