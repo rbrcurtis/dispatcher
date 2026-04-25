@@ -170,7 +170,7 @@ export const SessionView = observer(function SessionView({
 
   return (
     <div
-      className="flex flex-col flex-1 min-h-0 min-w-0 max-w-full border-t border-border"
+      className="flex flex-col flex-1 min-h-0 min-w-0 max-w-full overflow-hidden border-t border-border"
       onMouseDown={handlePanelMouseDown}
       onClick={handlePanelClick}
     >
@@ -570,7 +570,8 @@ function PromptInput({
             placeholder={isRunning ? 'Send a follow-up message...' : 'Enter a prompt to start a session...'}
             maxLength={10000}
             rows={3}
-            className="resize-none min-h-full pr-10 focus-ring"
+            // oxlint-disable-next-line orchestrel/no-overflow-auto -- native textarea handles own scroll
+            className="resize-none min-h-full max-h-40 overflow-y-auto pr-10 focus-ring"
           />
           {/* Reconnect button - top right inside textarea, only when disconnected */}
           {!wsConnected && (
