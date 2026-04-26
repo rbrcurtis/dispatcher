@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
-import { parseConfig } from '../src/shared/config.ts';
+import { buildModelAliasEnv, parseConfig } from '../src/shared/config.ts';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, '..');
@@ -255,6 +255,7 @@ function buildClaudeEnv(provider) {
     ANTHROPIC_BASE_URL: '',
     ANTHROPIC_API_KEY: '',
     ANTHROPIC_AUTH_TOKEN: '',
+    ...buildModelAliasEnv(provider.models),
   };
 
   if (provider.baseUrl) env.ANTHROPIC_BASE_URL = provider.baseUrl;

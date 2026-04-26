@@ -86,12 +86,14 @@ defaultModel: claude-sonnet-4-6
 });
 
 describe('buildModelAliasEnv', () => {
+  const model = (modelID: string) => ({ label: modelID, modelID, contextWindow: 200000 });
+
   it('returns no aliases when the provider has no models', () => {
-    expect(buildModelAliasEnv([])).toEqual({});
+    expect(buildModelAliasEnv({})).toEqual({});
   });
 
   it('maps one model to opus, sonnet, and haiku', () => {
-    expect(buildModelAliasEnv(['m1'])).toEqual({
+    expect(buildModelAliasEnv({ first: model('m1') })).toEqual({
       ANTHROPIC_DEFAULT_OPUS_MODEL: 'm1',
       ANTHROPIC_DEFAULT_SONNET_MODEL: 'm1',
       ANTHROPIC_DEFAULT_HAIKU_MODEL: 'm1',
@@ -99,7 +101,7 @@ describe('buildModelAliasEnv', () => {
   });
 
   it('maps two models with the second model also used for haiku', () => {
-    expect(buildModelAliasEnv(['m1', 'm2'])).toEqual({
+    expect(buildModelAliasEnv({ first: model('m1'), second: model('m2') })).toEqual({
       ANTHROPIC_DEFAULT_OPUS_MODEL: 'm1',
       ANTHROPIC_DEFAULT_SONNET_MODEL: 'm2',
       ANTHROPIC_DEFAULT_HAIKU_MODEL: 'm2',
@@ -107,7 +109,12 @@ describe('buildModelAliasEnv', () => {
   });
 
   it('maps only the first three models when more are configured', () => {
-    expect(buildModelAliasEnv(['m1', 'm2', 'm3', 'm4'])).toEqual({
+    expect(buildModelAliasEnv({
+      first: model('m1'),
+      second: model('m2'),
+      third: model('m3'),
+      fourth: model('m4'),
+    })).toEqual({
       ANTHROPIC_DEFAULT_OPUS_MODEL: 'm1',
       ANTHROPIC_DEFAULT_SONNET_MODEL: 'm2',
       ANTHROPIC_DEFAULT_HAIKU_MODEL: 'm3',

@@ -1,4 +1,4 @@
-import { loadConfig, parseConfig as parseSharedConfig, resolveEnvVars } from '../shared/config';
+import { loadConfig, parseConfig as parseSharedConfig, resolveEnvVars, buildModelAliasEnv } from '../shared/config';
 import type { OrchestrelConfig, MemoryUpsertConfig } from '../shared/config';
 
 export interface ProviderConfig {
@@ -6,6 +6,7 @@ export interface ProviderConfig {
   apiKey: string;
   authToken?: string;
   models: string[];
+  modelAliasEnv: Record<string, string>;
 }
 
 export interface OrcdConfig {
@@ -17,23 +18,7 @@ export interface OrcdConfig {
   memoryUpsert?: MemoryUpsertConfig;
 }
 
-export { resolveEnvVars };
-
-export function buildModelAliasEnv(models: string[]): Record<string, string> {
-  const opus = models[0];
-  const env: Record<string, string> = {};
-
-  if (opus) {
-    const sonnet = models[1] ?? opus;
-    const haiku = models[2] ?? sonnet;
-
-    env.ANTHROPIC_DEFAULT_OPUS_MODEL = opus;
-    env.ANTHROPIC_DEFAULT_SONNET_MODEL = sonnet;
-    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = haiku;
-  }
-
-  return env;
-}
+export { resolveEnvVars, buildModelAliasEnv };
 
 /** Flatten the shared config into orcd's historical shape (models as modelID list). */
 function toOrcdShape(cfg: OrchestrelConfig): OrcdConfig {
@@ -44,6 +29,7 @@ function toOrcdShape(cfg: OrchestrelConfig): OrcdConfig {
       apiKey: p.apiKey ?? '',
       ...(p.authToken ? { authToken: p.authToken } : {}),
       models: Object.values(p.models).map((m) => m.modelID),
+      modelAliasEnv: buildModelAliasEnv(p.models),
     };
   }
   return {

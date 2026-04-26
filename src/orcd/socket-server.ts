@@ -5,7 +5,7 @@ import { OrcdSession, type SessionEventCallback } from './session';
 import { SessionStore } from './session-store';
 import { expandSlashCommand } from './skill-resolver';
 import type { OrcdAction, OrcdMessage } from '../shared/orcd-protocol';
-import { buildModelAliasEnv, type ProviderConfig, type OrcdConfig } from './config';
+import type { ProviderConfig, OrcdConfig } from './config';
 import { prepareCompaction, applyCompaction, type PreparedCompaction } from '../lib/session-compactor';
 import { upsertMemories } from '../lib/memory-upsert';
 
@@ -271,7 +271,7 @@ export class OrcdServer {
       cfg.baseUrl ? { ANTHROPIC_BASE_URL: cfg.baseUrl } : {},
       cfg.apiKey ? { ANTHROPIC_API_KEY: cfg.apiKey } : {},
       cfg.authToken ? { ANTHROPIC_AUTH_TOKEN: cfg.authToken } : {},
-      buildModelAliasEnv(cfg.models),
+      cfg.modelAliasEnv,
     ) as Record<string, string>;
   }
 
