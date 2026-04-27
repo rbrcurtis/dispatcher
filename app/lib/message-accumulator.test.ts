@@ -54,6 +54,20 @@ describe('MessageAccumulator compaction markers', () => {
 
     expect(acc.conversation).toEqual([{ kind: 'compact', label: 'Background compaction started', timestamp }]);
   });
+
+  it('surfaces BGC applied messages as compact markers', () => {
+    const acc = new MessageAccumulator();
+    const timestamp = Date.UTC(2026, 3, 27, 12, 1, 0);
+
+    acc.handleMessage({
+      type: 'system',
+      subtype: 'compact_boundary',
+      source: 'orchestrel-bgc',
+      timestamp,
+    } as SdkMessage);
+
+    expect(acc.conversation).toEqual([{ kind: 'compact', label: 'Background compaction applied', timestamp }]);
+  });
 });
 
 describe('MessageAccumulator blocking subagents', () => {

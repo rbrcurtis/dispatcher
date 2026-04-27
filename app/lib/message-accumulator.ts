@@ -159,7 +159,8 @@ export class MessageAccumulator {
           this.conversation.push({ kind: 'system', subtype: 'init', model: msg.model, timestamp: msg.timestamp ?? Date.now() });
         } else if (msg.subtype === 'compact_boundary') {
           this.finalizeBlocks();
-          this.conversation.push({ kind: 'compact', timestamp: msg.timestamp });
+          const label = msg.source === 'orchestrel-bgc' ? 'Background compaction applied' : undefined;
+          this.conversation.push({ kind: 'compact', label, timestamp: msg.timestamp });
         } else if (msg.subtype === 'bgc_started') {
           this.finalizeBlocks();
           this.conversation.push({ kind: 'compact', label: 'Background compaction started', timestamp: msg.timestamp });
@@ -245,8 +246,10 @@ export class MessageAccumulator {
           this.finalizePendingHistoryTurn(normalizeTimestamp(msg.timestamp));
           this.conversation.push({ kind: 'system', subtype: 'init', model: msg.model, timestamp: normalizeTimestamp(msg.timestamp) });
         } else if (msg.subtype === 'compact_boundary') {
-          this.finalizePendingHistoryTurn(normalizeTimestamp(msg.timestamp));
-          this.conversation.push({ kind: 'compact', timestamp: normalizeTimestamp(msg.timestamp) });
+          const timestamp = normalizeTimestamp(msg.timestamp);
+          this.finalizePendingHistoryTurn(timestamp);
+          const label = msg.source === 'orchestrel-bgc' ? 'Background compaction applied' : undefined;
+          this.conversation.push({ kind: 'compact', label, timestamp });
         } else if (msg.subtype === 'bgc_started') {
           this.finalizePendingHistoryTurn(normalizeTimestamp(msg.timestamp));
           this.conversation.push({ kind: 'compact', label: 'Background compaction started', timestamp: normalizeTimestamp(msg.timestamp) });

@@ -36,6 +36,7 @@ export interface SdkSystemMessage {
   subtype: 'init' | 'compact_boundary' | 'bgc_started';
   session_id?: string;
   model?: string;
+  source?: string;
   timestamp?: number;
 }
 
@@ -190,6 +191,7 @@ export interface HistorySystemMessage {
   parent_tool_use_id: null;
   subtype?: 'init' | 'compact_boundary' | string;
   model?: string;
+  source?: string;
   timestamp?: HistoryTimestamp;
   message?: unknown;
 }
