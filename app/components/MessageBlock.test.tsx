@@ -101,4 +101,12 @@ describe('MessageBlock timestamp formatting', () => {
     expect(normalizedHtml).toContain(normalizeWhitespace(`Context compacted · ${formatted}`));
     expectDateAndTimeTokens(html, dateTokens, timeTokens);
   });
+
+  it('shows custom labels on compact markers', () => {
+    const html = renderEntry({ kind: 'compact', label: 'Background compaction started', timestamp });
+    const normalizedHtml = normalizeWhitespace(html);
+
+    expect(normalizedHtml).toContain(normalizeWhitespace(`Background compaction started · ${formatted}`));
+    expectDateAndTimeTokens(html, dateTokens, timeTokens);
+  });
 });

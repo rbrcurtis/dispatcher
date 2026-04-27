@@ -242,7 +242,7 @@ export const MessageBlock = memo(observer(function MessageBlock({ entry, index: 
       return (
         <div className="flex items-center gap-2 my-2 text-[11px] text-muted-foreground min-w-0 overflow-hidden">
           <div className="flex-1 border-t border-neon-amber/30 shrink min-w-2" />
-          <span className="text-neon-amber shrink-0">Context compacted{time ? ` · ${time}` : ''}</span>
+          <span className="text-neon-amber shrink-0">{entry.label ?? 'Context compacted'}{time ? ` · ${time}` : ''}</span>
           <div className="flex-1 border-t border-neon-amber/30 shrink min-w-2" />
         </div>
       );

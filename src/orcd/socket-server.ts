@@ -332,21 +332,33 @@ export class OrcdServer {
       env,
     });
 
-    if (this.turnActive.has(sid)) {
-      this.pendingSummaries.set(sid, prepared);
-      log(`summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} msgs, ${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — turn active, waiting`);
-    } else {
-      log(`summary ready — session idle, applying now`);
-      const result = await applyCompaction(prepared);
-      log(`applied: ${result.messagesCovered}/${result.messagesBefore} msgs, ${result.summaryChars} chars`);
-      session.emitCompactBoundary();
+    this.pendingSummaries.set(sid, prepared);
+    log(`summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} msgs, ${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — waiting for session_exit`);
+  }
+
+  private async applyPendingCompaction(session: OrcdSession): Promise<void> {
+    const sid = session.id;
+    const prepared = this.pendingSummaries.get(sid);
+    if (!prepared) {
+      console.log(`[orcd:${sid.slice(0, 8)}:compact] no pending summary at session_exit`);
+      return;
     }
+
+    console.log(`[orcd:${sid.slice(0, 8)}:compact] applying pre-computed summary at session_exit`);
+    const result = await applyCompaction(prepared);
+    this.pendingSummaries.delete(sid);
+    console.log(`[orcd:${sid.slice(0, 8)}:compact] applied: ${result.messagesCovered}/${result.messagesBefore} msgs, ${result.summaryChars} chars`);
+    session.emitCompactBoundary();
   }
 
   // ── Session lifecycle hooks (called from handleCreate) ──────────────────
 
   private attachLifecycleHooks(session: OrcdSession): void {
     const sid = session.id;
+
+    session.onBeforeExit(async () => {
+      await this.applyPendingCompaction(session);
+    });
 
     const hook: SessionEventCallback = (msg) => {
       if (msg.type === 'stream_event') {
@@ -356,18 +368,6 @@ export class OrcdServer {
       if (msg.type === 'result') {
         this.turnActive.delete(sid);
 
-        // Apply pending compaction at turn end (instant, session idle)
-        const prepared = this.pendingSummaries.get(sid);
-        if (prepared) {
-          this.pendingSummaries.delete(sid);
-          console.log(`[orcd:${sid.slice(0, 8)}:compact] applying pre-computed summary at turn end`);
-          applyCompaction(prepared).then((r) => {
-            console.log(`[orcd:${sid.slice(0, 8)}:compact] applied: ${r.messagesCovered}/${r.messagesBefore} msgs, ${r.summaryChars} chars`);
-            session.emitCompactBoundary();
-          }).catch((err) => {
-            console.error(`[orcd:${sid.slice(0, 8)}:compact] apply failed:`, err);
-          });
-        }
       }
 
       if (msg.type === 'context_usage') {
@@ -382,6 +382,7 @@ export class OrcdServer {
           this.compacting.add(sid);
           const pct = ((msg.contextTokens / msg.contextWindow) * 100).toFixed(0);
           console.log(`[orcd:${sid.slice(0, 8)}:compact] threshold hit (${pct}%), starting`);
+          session.emitBgcStarted();
           this.triggerCompaction(session).catch((err) => {
             console.error(`[orcd:${sid.slice(0, 8)}:compact] failed:`, err);
           }).finally(() => {
@@ -391,7 +392,6 @@ export class OrcdServer {
       }
 
       if (msg.type === 'session_exit') {
-        // Cleanup
         this.compacting.delete(sid);
         this.pendingSummaries.delete(sid);
         this.turnActive.delete(sid);

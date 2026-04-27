@@ -39,7 +39,14 @@ export function initOrcdRouter(
       console.log(`[orcd-router] dropping message with no sessionId: type=${msg.type}`);
       return;
     }
-    const cardId = sessionCardMap.get(msg.sessionId);
+    let cardId = sessionCardMap.get(msg.sessionId);
+    if (cardId == null && msg.type === 'session_exit') {
+      const card = await repo().findOneBy({ sessionId: msg.sessionId });
+      if (card) {
+        cardId = card.id;
+        trackSession(cardId, msg.sessionId);
+      }
+    }
     if (cardId == null) {
       console.log(`[orcd-router] no card for session ${msg.sessionId.slice(0, 8)}, dropping type=${msg.type}`);
       return;
@@ -161,7 +168,8 @@ export async function reconcileRunningCards(
   // client.isActive() reads from in-memory cache which gets cleared on
   // orchestrel restart / orcd disconnect.
   const activeList = await client.list();
-  const activeIds = new Set(activeList.sessions.map((s) => s.id));
+  const runningSessions = activeList.sessions.filter((s) => s.state === 'running');
+  const activeIds = new Set(runningSessions.map((s) => s.id));
 
   // Re-seed in-memory isActive tracking + router mapping for every orcd
   // session that maps to a known card. This ensures client.isActive() tells
@@ -174,7 +182,7 @@ export async function reconcileRunningCards(
     if (c.sessionId) cardBySession.set(c.sessionId, c);
   }
 
-  for (const sess of activeList.sessions) {
+  for (const sess of runningSessions) {
     const card = cardBySession.get(sess.id);
     if (!card) continue;
     client.markActive(sess.id);

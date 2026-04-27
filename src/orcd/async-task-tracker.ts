@@ -114,7 +114,9 @@ export function extractAsyncAgentLaunches(
     const toolUseId = block.tool_use_id;
     if (typeof toolUseId !== 'string') continue;
 
-    const description = toolDescriptions.get(toolUseId) ?? 'Async agent';
+    const description = toolDescriptions.get(toolUseId);
+    if (!description) continue;
+
     const launch = parseAsyncAgentLaunch(textFromToolResultContent(block.content), toolUseId, description);
     if (launch) launches.push(launch);
   }

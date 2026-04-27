@@ -4,6 +4,7 @@ import type {
   SdkStreamEvent,
   SdkResultMessage,
   SdkToolUseSummary,
+  SdkUserMessage,
   SdkTaskStarted,
   SdkTaskProgress,
   SdkTaskNotification,
@@ -66,13 +67,42 @@ export type ConversationEntry =
   | { kind: 'user'; content: string; optimistic?: boolean; timestamp?: number }
   | { kind: 'system'; subtype: string; model?: string; timestamp?: number }
   | { kind: 'error'; message: string; timestamp?: number }
-  | { kind: 'compact'; timestamp?: number };
+  | { kind: 'compact'; label?: string; timestamp?: number };
 
 function normalizeTimestamp(timestamp: number | string | undefined): number | undefined {
   if (timestamp == null) return undefined;
   if (typeof timestamp === 'number') return timestamp < 1e12 ? timestamp * 1000 : timestamp;
   const parsed = Date.parse(timestamp);
   return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function parseToolInput(input: string | undefined): Record<string, unknown> {
+  if (!input) return {};
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    return typeof parsed === 'object' && parsed !== null ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function summarizeToolResult(result: string): string {
+  const line = result.trim().split('\n').find(Boolean) ?? 'Done';
+  return line.length > 80 ? `${line.slice(0, 77)}...` : line;
+}
+
+function textFromToolResultContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+
+  return content
+    .map((block) => {
+      if (typeof block !== 'object' || block === null) return '';
+      const text = (block as { text?: unknown }).text;
+      return typeof text === 'string' ? text : '';
+    })
+    .filter(Boolean)
+    .join('\n');
 }
 
 export class MessageAccumulator {
@@ -82,14 +112,16 @@ export class MessageAccumulator {
   retryAfterMs: number | null = null;
   private historyPendingResultTimestamp?: number;
   private historyTurnCount = 0;
+  private blockingSubagentToolIds = new Map<string, string>();
 
   constructor() {
-    makeAutoObservable<this, 'historyPendingResultTimestamp' | 'historyTurnCount'>(this, {
+    makeAutoObservable<this, 'historyPendingResultTimestamp' | 'historyTurnCount' | 'blockingSubagentToolIds'>(this, {
       conversation: observable.shallow,
       currentBlocks: observable.shallow,
       subagents: observable,
       historyPendingResultTimestamp: false,
       historyTurnCount: false,
+      blockingSubagentToolIds: false,
     });
   }
 
@@ -99,6 +131,9 @@ export class MessageAccumulator {
         this.handleStreamEvent(msg);
         break;
       case 'assistant':
+        break;
+      case 'user':
+        this.handleUserMessage(msg);
         break;
       case 'result':
         this.handleResult(msg);
@@ -125,6 +160,9 @@ export class MessageAccumulator {
         } else if (msg.subtype === 'compact_boundary') {
           this.finalizeBlocks();
           this.conversation.push({ kind: 'compact', timestamp: msg.timestamp });
+        } else if (msg.subtype === 'bgc_started') {
+          this.finalizeBlocks();
+          this.conversation.push({ kind: 'compact', label: 'Background compaction started', timestamp: msg.timestamp });
         }
         break;
       case 'error':
@@ -209,6 +247,9 @@ export class MessageAccumulator {
         } else if (msg.subtype === 'compact_boundary') {
           this.finalizePendingHistoryTurn(normalizeTimestamp(msg.timestamp));
           this.conversation.push({ kind: 'compact', timestamp: normalizeTimestamp(msg.timestamp) });
+        } else if (msg.subtype === 'bgc_started') {
+          this.finalizePendingHistoryTurn(normalizeTimestamp(msg.timestamp));
+          this.conversation.push({ kind: 'compact', label: 'Background compaction started', timestamp: normalizeTimestamp(msg.timestamp) });
         }
         break;
     }
@@ -265,7 +306,30 @@ export class MessageAccumulator {
 
   private onContentBlockStop(evt: ContentBlockStop): void {
     const block = this.currentBlocks[evt.index];
-    if (block) block.complete = true;
+    if (!block) return;
+
+    block.complete = true;
+    this.trackBlockingSubagent(block);
+  }
+
+  private trackBlockingSubagent(block: ContentBlock): void {
+    if (block.type !== 'tool_use') return;
+    if (block.name !== 'Agent' && block.name !== 'Task') return;
+    if (!block.id) return;
+
+    const input = parseToolInput(block.input);
+    if (input.run_in_background === true) return;
+
+    const description = typeof input.description === 'string' && input.description.trim()
+      ? input.description.trim()
+      : 'Subagent';
+    this.blockingSubagentToolIds.set(block.id, description);
+    this.subagents.set(block.id, {
+      taskId: block.id,
+      description,
+      status: 'running',
+      lastProgress: 'Running',
+    });
   }
 
   private finalizeBlocks(): void {
@@ -305,6 +369,17 @@ export class MessageAccumulator {
     });
   }
 
+  private handleUserMessage(msg: SdkUserMessage): void {
+    for (const block of msg.message.content) {
+      if (block.type !== 'tool_result' || !block.tool_use_id) continue;
+      this.completeBlockingSubagent(
+        block.tool_use_id,
+        textFromToolResultContent(block.content),
+        block.is_error ?? false,
+      );
+    }
+  }
+
   private handleToolUseSummary(msg: SdkToolUseSummary): void {
     this.conversation.push({
       kind: 'tool_activity',
@@ -316,6 +391,20 @@ export class MessageAccumulator {
         isError: msg.is_error ?? false,
       },
     });
+
+    if (msg.tool_use_id) this.completeBlockingSubagent(msg.tool_use_id, msg.tool_result, msg.is_error ?? false);
+  }
+
+  private completeBlockingSubagent(toolUseId: string, result: string, isError: boolean): void {
+    if (!this.blockingSubagentToolIds.has(toolUseId)) return;
+
+    const sub = this.subagents.get(toolUseId);
+    if (!sub) return;
+
+    sub.status = isError ? 'failed' : 'completed';
+    sub.lastProgress = summarizeToolResult(result);
+    this.blockingSubagentToolIds.delete(toolUseId);
+    setTimeout(() => this.subagents.delete(toolUseId), 2000);
   }
 
   private handleTaskStarted(msg: SdkTaskStarted): void {
@@ -342,6 +431,11 @@ export class MessageAccumulator {
 
   flushHistory(): void {
     this.finalizePendingHistoryTurn();
+  }
+
+  clearSubagents(): void {
+    this.subagents.clear();
+    this.blockingSubagentToolIds.clear();
   }
 
   private finalizePendingHistoryTurn(timestamp = this.historyPendingResultTimestamp): void {
@@ -375,7 +469,7 @@ export class MessageAccumulator {
   clear(): void {
     this.conversation = [];
     this.currentBlocks = [];
-    this.subagents.clear();
+    this.clearSubagents();
     this.retryAfterMs = null;
     this.historyPendingResultTimestamp = undefined;
     this.historyTurnCount = 0;

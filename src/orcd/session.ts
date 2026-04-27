@@ -63,12 +63,21 @@ export class OrcdSession {
   private readonly asyncTaskPollMs: number;
   private readonly asyncTasks = new AsyncTaskTracker();
   private readonly agentToolDescriptions = new Map<string, string>();
+  private readonly beforeExitHooks: Array<() => Promise<void>> = [];
   private jsonlLinesRead = 0;
 
   private activeQuery: Query | null = null;
   private subscribers = new Set<SessionEventCallback>();
   private onFork: ((oldId: string, newId: string) => void) | undefined;
   private forkedTo: string | undefined;
+
+  onBeforeExit(cb: () => Promise<void>): void {
+    this.beforeExitHooks.push(cb);
+  }
+
+  private async runBeforeExitHooks(): Promise<void> {
+    for (const cb of this.beforeExitHooks) await cb();
+  }
 
   private isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
@@ -368,6 +377,7 @@ export class OrcdSession {
         for (const cb of this.subscribers) cb(msg);
       }
     } finally {
+      await this.runBeforeExitHooks();
       this.activeQuery = null;
       const exitMsg: SessionExitMessage = {
         type: 'session_exit',
@@ -418,9 +428,17 @@ export class OrcdSession {
    * after applyCompaction() rewrites the JSONL.
    */
   emitCompactBoundary(): void {
+    this.emitSyntheticSystemEvent('compact_boundary');
+  }
+
+  emitBgcStarted(): void {
+    this.emitSyntheticSystemEvent('bgc_started');
+  }
+
+  private emitSyntheticSystemEvent(subtype: 'compact_boundary' | 'bgc_started'): void {
     const event = {
       type: 'system',
-      subtype: 'compact_boundary',
+      subtype,
       session_id: this.id,
       source: 'orchestrel-bgc',
       timestamp: Date.now(),

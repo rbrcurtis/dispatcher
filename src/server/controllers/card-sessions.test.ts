@@ -1,13 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MessageBus } from '../bus';
 
-// Mock DB so handler doesn't throw on Card operations
+const mockCards = [
+  { id: 42, sessionId: 'sess-abc', column: 'running', contextTokens: 0, contextWindow: 200000, turnsCompleted: 0, updatedAt: '', save: vi.fn() },
+];
+const mockRepo = {
+  findOneBy: vi.fn(async (where: { id?: number; sessionId?: string }) => {
+    if (where.id !== undefined) return mockCards.find((card) => card.id === where.id) ?? null;
+    if (where.sessionId !== undefined) return mockCards.find((card) => card.sessionId === where.sessionId) ?? null;
+    return null;
+  }),
+  find: vi.fn(async () => mockCards),
+  save: vi.fn(async (card: (typeof mockCards)[number]) => card),
+};
+
 vi.mock('../models/index', () => ({
   AppDataSource: {
-    getRepository: () => ({
-      findOneBy: vi.fn().mockResolvedValue({ id: 42, sessionId: 'sess-abc', contextTokens: 0, contextWindow: 200000, turnsCompleted: 0, updatedAt: '', save: vi.fn() }),
-      save: vi.fn().mockResolvedValue(undefined),
-    }),
+    getRepository: () => mockRepo,
   },
 }));
 vi.mock('../models/Card', () => ({
@@ -29,6 +38,19 @@ describe('orcd message router', () => {
 
   beforeEach(() => {
     vi.resetModules();
+    mockCards.splice(0, mockCards.length, {
+      id: 42,
+      sessionId: 'sess-abc',
+      column: 'running',
+      contextTokens: 0,
+      contextWindow: 200000,
+      turnsCompleted: 0,
+      updatedAt: '',
+      save: vi.fn(),
+    });
+    mockRepo.findOneBy.mockClear();
+    mockRepo.find.mockClear();
+    mockRepo.save.mockClear();
     bus = new MessageBus();
     handler = null;
     mockClient.onMessage.mockClear();
@@ -70,6 +92,44 @@ describe('orcd message router', () => {
 
     await new Promise((r) => setTimeout(r, 10));
     expect(sdkSpy).not.toHaveBeenCalled();
+  });
+
+  it('routes session_exit by DB session_id when in-memory mapping is missing', async () => {
+    const { initOrcdRouter } = await import('./card-sessions');
+    initOrcdRouter(mockClient as never, bus);
+
+    const exitSpy = vi.fn();
+    bus.on('card:42:exit', exitSpy);
+
+    handler!({
+      type: 'session_exit',
+      sessionId: 'sess-abc',
+      state: 'completed',
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(exitSpy).toHaveBeenCalledWith({
+      sessionId: 'sess-abc',
+      status: 'completed',
+    });
+  });
+
+  it('does not reset context tokens when background compaction starts', async () => {
+    const { initOrcdRouter, trackSession } = await import('./card-sessions');
+    initOrcdRouter(mockClient as never, bus);
+    trackSession(42, 'sess-abc');
+    mockCards[0].contextTokens = 50000;
+
+    handler!({
+      type: 'stream_event',
+      sessionId: 'sess-abc',
+      eventIndex: 0,
+      event: { type: 'system', subtype: 'bgc_started', session_id: 'sess-abc' },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(mockCards[0].contextTokens).toBe(50000);
+    expect(mockRepo.save).not.toHaveBeenCalled();
   });
 
   it('routes context_usage to card:N:context bus topic', async () => {
@@ -139,5 +199,30 @@ describe('orcd message router', () => {
 
     await new Promise((r) => setTimeout(r, 10));
     expect(sdkSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('reconcileRunningCards', () => {
+  it('moves running cards to review when orcd only lists stopped session', async () => {
+    const { reconcileRunningCards } = await import('./card-sessions');
+    const bus = new MessageBus();
+    const exitSpy = vi.fn();
+    bus.on('card:42:exit', exitSpy);
+    const client = {
+      list: vi.fn(async () => ({
+        type: 'session_list',
+        sessions: [{ id: 'sess-abc', state: 'stopped', cwd: '/tmp' }],
+      })),
+      markActive: vi.fn(),
+    };
+
+    await reconcileRunningCards(client as never, bus);
+
+    expect(client.markActive).not.toHaveBeenCalled();
+    expect(mockCards[0].column).toBe('review');
+    expect(exitSpy).toHaveBeenCalledWith({
+      sessionId: 'sess-abc',
+      status: 'stopped',
+    });
   });
 });

@@ -33,7 +33,7 @@ export type StreamEvent =
 
 export interface SdkSystemMessage {
   type: 'system';
-  subtype: 'init' | 'compact_boundary';
+  subtype: 'init' | 'compact_boundary' | 'bgc_started';
   session_id?: string;
   model?: string;
   timestamp?: number;
@@ -49,6 +49,19 @@ export interface SdkAssistantMessage {
   content: Array<{ type: string; text?: string; thinking?: string; id?: string; name?: string; input?: unknown }>;
   model?: string;
   stop_reason?: string;
+}
+
+export interface SdkUserMessage {
+  type: 'user';
+  message: {
+    role: 'user';
+    content: Array<{
+      type: string;
+      tool_use_id?: string;
+      content?: unknown;
+      is_error?: boolean;
+    }>;
+  };
 }
 
 export interface SdkResultMessage {
@@ -77,6 +90,7 @@ export interface SdkToolUseSummary {
   tool_name: string;
   tool_input: unknown;
   tool_result: string;
+  tool_use_id?: string;
   is_error?: boolean;
   timestamp?: number;
 }
@@ -120,6 +134,7 @@ export type SdkMessage =
   | SdkSystemMessage
   | SdkStreamEvent
   | SdkAssistantMessage
+  | SdkUserMessage
   | SdkResultMessage
   | SdkToolProgress
   | SdkToolUseSummary

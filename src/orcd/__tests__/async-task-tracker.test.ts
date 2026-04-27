@@ -146,4 +146,32 @@ describe('extractAsyncAgentLaunches', () => {
       },
     ]);
   });
+
+  it('ignores matching launch text from non-Agent tool results', () => {
+    const event = {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'call_read',
+            content: [
+              {
+                type: 'text',
+                text: [
+                  'Source code fixture:',
+                  'Async agent launched successfully.',
+                  'agentId: ${taskId} (internal ID - do not mention to user.)',
+                  'output_file: /tmp/claude/tasks/${taskId}.output',
+                ].join('\n'),
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    expect(extractAsyncAgentLaunches(event, new Map())).toEqual([]);
+  });
 });

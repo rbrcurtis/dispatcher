@@ -113,6 +113,7 @@ export class SessionStore {
       if (data.contextWindow > 0) s.contextWindow = data.contextWindow;
 
       if (data.status === 'completed' || data.status === 'stopped' || data.status === 'errored') {
+        s.accumulator.clearSubagents();
         const stopInterval = this.stopIntervals.get(data.cardId);
         if (stopInterval !== undefined) {
           clearInterval(stopInterval);
@@ -130,6 +131,7 @@ export class SessionStore {
       if (s.status === 'running' || s.status === 'starting') {
         s.status = 'completed';
       }
+      s.accumulator.clearSubagents();
       const stopInterval = this.stopIntervals.get(cardId);
       if (stopInterval !== undefined) {
         clearInterval(stopInterval);
