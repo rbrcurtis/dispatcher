@@ -75,7 +75,7 @@ function createSession() {
 }
 
 describe('OrcdServer background compaction', () => {
-  it('prepares at threshold, emits start, and applies only on session_exit', async () => {
+  it('applies immediately when summary finishes and session is not active', async () => {
     compactorMocks.prepareCompaction.mockReset().mockResolvedValue(prepared);
     compactorMocks.applyCompaction.mockReset().mockResolvedValue(applyResult);
     const server = createServer();
@@ -85,24 +85,18 @@ describe('OrcdServer background compaction', () => {
     const hook = getHook();
 
     hook({ type: 'stream_event', sessionId: 'session-1', eventIndex: 1, event: { type: 'message_start' } });
+    hook({ type: 'result', sessionId: 'session-1', eventIndex: 2, result: { subtype: 'success' } } satisfies SessionResultMessage);
     hook({ type: 'context_usage', sessionId: 'session-1', contextTokens: 80, contextWindow: 100 } satisfies ContextUsageMessage);
 
     await vi.waitFor(() => expect(compactorMocks.prepareCompaction).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(compactorMocks.applyCompaction).toHaveBeenCalledTimes(1));
     expect(emitBgcStarted).toHaveBeenCalledTimes(1);
-    expect(compactorMocks.applyCompaction).not.toHaveBeenCalled();
-    expect(emitCompactBoundary).not.toHaveBeenCalled();
-
-    hook({ type: 'result', sessionId: 'session-1', eventIndex: 2, result: { subtype: 'success' } } satisfies SessionResultMessage);
-    await Promise.resolve();
-
-    expect(compactorMocks.applyCompaction).not.toHaveBeenCalled();
-    expect(emitCompactBoundary).not.toHaveBeenCalled();
+    expect(compactorMocks.applyCompaction).toHaveBeenCalledWith(prepared);
+    expect(emitCompactBoundary).toHaveBeenCalledTimes(1);
 
     await runBeforeExit();
     hook({ type: 'session_exit', sessionId: 'session-1', state: 'completed' } satisfies SessionExitMessage);
 
     expect(compactorMocks.applyCompaction).toHaveBeenCalledTimes(1);
-    expect(compactorMocks.applyCompaction).toHaveBeenCalledWith(prepared);
-    expect(emitCompactBoundary).toHaveBeenCalledTimes(1);
   });
 });

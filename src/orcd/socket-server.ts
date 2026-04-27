@@ -333,6 +333,11 @@ export class OrcdServer {
     });
 
     this.pendingSummaries.set(sid, prepared);
+    if (!this.turnActive.has(sid)) {
+      log(`summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} msgs, ${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — session inactive, applying now`);
+      await this.applyPendingCompaction(session);
+      return;
+    }
     log(`summary ready (${prepared.messagesCovered}/${prepared.messagesBefore} msgs, ${prepared.summaryChars} chars, ${prepared.prepareDurationMs}ms) — waiting for session_exit`);
   }
 
