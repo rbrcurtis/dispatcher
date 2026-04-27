@@ -80,11 +80,46 @@ export function parseTaskNotification(content: string): TaskNotification | null 
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function textFromToolResultContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+
+  return content
+    .map((block) => {
+      if (!isRecord(block)) return '';
+      const text = block.text;
+      return typeof text === 'string' ? text : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function extractAsyncAgentLaunches(
-  _event: unknown,
-  _toolDescriptions: Map<string, string>,
+  event: unknown,
+  toolDescriptions: Map<string, string>,
 ): AsyncAgentLaunch[] {
-  return [];
+  if (!isRecord(event) || event.type !== 'user') return [];
+
+  const message = event.message;
+  if (!isRecord(message) || !Array.isArray(message.content)) return [];
+
+  const launches: AsyncAgentLaunch[] = [];
+  for (const block of message.content) {
+    if (!isRecord(block) || block.type !== 'tool_result') continue;
+
+    const toolUseId = block.tool_use_id;
+    if (typeof toolUseId !== 'string') continue;
+
+    const description = toolDescriptions.get(toolUseId) ?? 'Async agent';
+    const launch = parseAsyncAgentLaunch(textFromToolResultContent(block.content), toolUseId, description);
+    if (launch) launches.push(launch);
+  }
+
+  return launches;
 }
 
 export class AsyncTaskTracker {
