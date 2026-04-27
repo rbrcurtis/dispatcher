@@ -183,7 +183,7 @@ describe('OrcdSession async Agent lifecycle', () => {
           '<task-id>agent-failed-123</task-id>',
           '<tool-use-id>call_failed</tool-use-id>',
           '<status>failed</status>',
-          '<summary>Task failed</summary>',
+          '<result>BLOCKED</result>',
           '</task-notification>',
         ].join('\n'),
       }) + '\n');
@@ -196,6 +196,7 @@ describe('OrcdSession async Agent lifecycle', () => {
           type: 'task_notification',
           task_id: 'agent-failed-123',
           status: 'failed',
+          result: 'BLOCKED',
         }),
       }));
       expect(payloads.at(-1)).toEqual(expect.objectContaining({
