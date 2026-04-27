@@ -134,4 +134,56 @@ describe('OrcdSession async Agent lifecycle', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('emits stopped session_exit when cancelled while waiting for async task notification', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'orchestrel-session-'));
+    const jsonlPath = join(dir, 'session.jsonl');
+    await writeFile(jsonlPath, '');
+
+    events.length = 0;
+    events.push(
+      toolUseEvent('call_cancel', 'Run follow-up async work'),
+      asyncLaunchResult('call_cancel', 'agent-cancel-123'),
+      {
+        type: 'result',
+        subtype: 'success',
+        stop_reason: 'end_turn',
+        modelUsage: { test: { contextWindow: 200000 } },
+      },
+    );
+
+    const session = new OrcdSession({
+      cwd: dir,
+      model: 'test-model',
+      provider: 'test-provider',
+      sessionId: 'session-cancel',
+      jsonlPathForTesting: jsonlPath,
+      asyncTaskPollMsForTesting: 10,
+    });
+
+    const received: string[] = [];
+    const payloads: unknown[] = [];
+    const cb: SessionEventCallback = (msg) => {
+      received.push(msg.type);
+      payloads.push(msg);
+    };
+    session.subscribe(cb);
+
+    const run = session.run({ prompt: 'go' });
+
+    try {
+      await vi.waitFor(() => expect(received).toContain('result'));
+      expect(received).not.toContain('session_exit');
+
+      await session.cancel();
+      await run;
+
+      expect(payloads.at(-1)).toEqual(expect.objectContaining({
+        type: 'session_exit',
+        state: 'stopped',
+      }));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

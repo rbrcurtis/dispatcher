@@ -115,31 +115,19 @@ export class OrcdSession {
   }
 
   private async getJsonlPath(): Promise<string> {
-    if (this.jsonlPathForTesting) {
-      console.log(`[orcd:${this.id.slice(0, 8)}] using test JSONL path`);
-      return this.jsonlPathForTesting;
-    }
-    return resolveJsonlPath(this.id, this.cwd);
+    return this.jsonlPathForTesting ?? resolveJsonlPath(this.id, this.cwd);
   }
 
   private async scanJsonlTaskNotifications(): Promise<void> {
     const path = await this.getJsonlPath();
-    let text: string;
-    try {
-      text = await readFile(path, 'utf8');
-    } catch (err: unknown) {
-      console.error(`[orcd:${this.id.slice(0, 8)}] failed reading JSONL:`, err);
-      if (
-        err instanceof Error
+    const text = await readFile(path, 'utf8').catch((err: unknown) => {
+      const isMissingJsonl = err instanceof Error
         && this.isRecord(err)
         && typeof err.code === 'string'
-        && err.code === 'ENOENT'
-      ) {
-        console.log(`[orcd:${this.id.slice(0, 8)}] JSONL not found yet, skipping scan`);
-        return;
-      }
-      throw err;
-    }
+        && err.code === 'ENOENT';
+      if (!isMissingJsonl) throw err;
+      return '';
+    });
 
     const lines = text.split('\n');
     const readableLines = lines.at(-1) === '' ? lines.length - 1 : lines.length;
