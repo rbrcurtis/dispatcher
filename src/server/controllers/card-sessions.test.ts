@@ -94,6 +94,33 @@ describe('orcd message router', () => {
     });
   });
 
+  it('does not treat task notifications as card completion', async () => {
+    const { initOrcdRouter, trackSession } = await import('./card-sessions');
+    initOrcdRouter(mockClient as never, bus);
+    trackSession(42, 'sess-abc');
+
+    const exitSpy = vi.fn();
+    const sdkSpy = vi.fn();
+    bus.on('card:42:exit', exitSpy);
+    bus.on('card:42:sdk', sdkSpy);
+
+    handler!({
+      type: 'stream_event',
+      sessionId: 'sess-abc',
+      eventIndex: 1,
+      event: { type: 'task_notification', task_id: 'agent-123', status: 'completed', result: 'DONE' },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sdkSpy).toHaveBeenCalledWith({
+      type: 'task_notification',
+      task_id: 'agent-123',
+      status: 'completed',
+      result: 'DONE',
+    });
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
   it('untrackSession stops routing', async () => {
     const { initOrcdRouter, trackSession, untrackSession } = await import('./card-sessions');
     initOrcdRouter(mockClient as never, bus);
