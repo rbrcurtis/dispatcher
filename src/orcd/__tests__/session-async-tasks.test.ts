@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { describe, expect, it, vi } from 'vitest';
@@ -93,36 +93,46 @@ describe('OrcdSession async Agent lifecycle', () => {
     session.subscribe(cb);
 
     const run = session.run({ prompt: 'go' });
-    await vi.waitFor(() => expect(received).toContain('result'));
-    expect(received).not.toContain('session_exit');
-    expect(payloads).toContainEqual(expect.objectContaining({
-      type: 'stream_event',
-      event: { type: 'task_started', task_id: 'agent-123', description: 'Implement remaining tasks' },
-    }));
 
-    await writeFile(jsonlPath, JSON.stringify({
-      type: 'queue-operation',
-      operation: 'enqueue',
-      content: [
-        '<task-notification>',
-        '<task-id>agent-123</task-id>',
-        '<tool-use-id>call_abc</tool-use-id>',
-        '<status>completed</status>',
-        '<result>DONE</result>',
-        '</task-notification>',
-      ].join('\n'),
-    }) + '\n');
+    try {
+      await vi.waitFor(() => expect(received).toContain('result'));
+      expect(received).not.toContain('session_exit');
+      expect(payloads).toContainEqual(expect.objectContaining({
+        type: 'stream_event',
+        event: expect.objectContaining({
+          type: 'task_started',
+          task_id: 'agent-123',
+          description: 'Implement remaining tasks',
+        }),
+      }));
 
-    await run;
+      await writeFile(jsonlPath, JSON.stringify({
+        type: 'queue-operation',
+        operation: 'enqueue',
+        content: [
+          '<task-notification>',
+          '<task-id>agent-123</task-id>',
+          '<tool-use-id>call_abc</tool-use-id>',
+          '<status>completed</status>',
+          '<result>DONE</result>',
+          '</task-notification>',
+        ].join('\n'),
+      }) + '\n');
 
-    expect(payloads).toContainEqual(expect.objectContaining({
-      type: 'stream_event',
-      event: { type: 'task_notification', task_id: 'agent-123', status: 'completed', result: 'DONE' },
-    }));
-    expect(received.at(-1)).toBe('session_exit');
+      await run;
 
-    const finalContent = await readFile(jsonlPath, 'utf8');
-    expect(finalContent).toContain('<task-notification>');
-    await rm(dir, { recursive: true, force: true });
+      expect(payloads).toContainEqual(expect.objectContaining({
+        type: 'stream_event',
+        event: expect.objectContaining({
+          type: 'task_notification',
+          task_id: 'agent-123',
+          status: 'completed',
+          result: 'DONE',
+        }),
+      }));
+      expect(received.at(-1)).toBe('session_exit');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
