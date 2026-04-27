@@ -1,8 +1,10 @@
 import { randomUUID } from 'crypto';
+import { readFile } from 'fs/promises';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import type { Query, Options } from '@anthropic-ai/claude-agent-sdk';
+import { resolveJsonlPath } from '../lib/session-compactor';
 import { AUTO_COMPACT_RATIO } from '../shared/constants';
-import { AsyncTaskTracker, extractAsyncAgentLaunches } from './async-task-tracker';
+import { AsyncTaskTracker, extractAsyncAgentLaunches, parseTaskNotification } from './async-task-tracker';
 import { RingBuffer } from './ring-buffer';
 import type { SessionState } from './types';
 import type {
@@ -109,6 +111,69 @@ export class OrcdSession {
     for (const launch of extractAsyncAgentLaunches(event, this.agentToolDescriptions)) {
       const started = this.asyncTasks.recordLaunch(launch);
       if (started) this.emitSyntheticTaskEvent(started);
+    }
+  }
+
+  private async getJsonlPath(): Promise<string> {
+    if (this.jsonlPathForTesting) {
+      console.log(`[orcd:${this.id.slice(0, 8)}] using test JSONL path`);
+      return this.jsonlPathForTesting;
+    }
+    return resolveJsonlPath(this.id, this.cwd);
+  }
+
+  private async scanJsonlTaskNotifications(): Promise<void> {
+    const path = await this.getJsonlPath();
+    let text: string;
+    try {
+      text = await readFile(path, 'utf8');
+    } catch (err: unknown) {
+      console.error(`[orcd:${this.id.slice(0, 8)}] failed reading JSONL:`, err);
+      if (
+        err instanceof Error
+        && this.isRecord(err)
+        && typeof err.code === 'string'
+        && err.code === 'ENOENT'
+      ) {
+        console.log(`[orcd:${this.id.slice(0, 8)}] JSONL not found yet, skipping scan`);
+        return;
+      }
+      throw err;
+    }
+
+    const lines = text.split('\n');
+    const readableLines = lines.at(-1) === '' ? lines.length - 1 : lines.length;
+    for (let i = this.jsonlLinesRead; i < readableLines; i += 1) {
+      const line = lines[i];
+      if (!line?.trim()) continue;
+
+      let obj: unknown;
+      try {
+        obj = JSON.parse(line) as unknown;
+      } catch (err: unknown) {
+        console.error(`[orcd:${this.id.slice(0, 8)}] invalid JSONL line while scanning task notifications:`, err);
+        continue;
+      }
+
+      if (!this.isRecord(obj)) continue;
+      if (obj.type !== 'queue-operation' || typeof obj.content !== 'string') continue;
+      const notification = parseTaskNotification(obj.content);
+      if (!notification) continue;
+
+      const event = this.asyncTasks.recordNotification(notification);
+      if (event) this.emitSyntheticTaskEvent(event);
+    }
+    this.jsonlLinesRead = readableLines;
+  }
+
+  private async waitForAsyncTasks(): Promise<void> {
+    while (this.state !== 'stopped' && this.asyncTasks.hasPending()) {
+      await this.scanJsonlTaskNotifications();
+      if (!this.asyncTasks.hasPending()) {
+        console.log(`[orcd:${this.id.slice(0, 8)}] all async tasks resolved from JSONL notifications`);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, this.asyncTaskPollMs));
     }
   }
 
@@ -287,6 +352,11 @@ export class OrcdSession {
           };
           for (const cb of this.subscribers) cb(msg);
         }
+      }
+
+      if (this.state !== 'stopped' && this.asyncTasks.hasPending()) {
+        log('waiting for async task notifications before session_exit');
+        await this.waitForAsyncTasks();
       }
 
       if (this.state !== 'stopped') {

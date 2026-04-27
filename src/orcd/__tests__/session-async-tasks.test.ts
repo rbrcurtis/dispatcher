@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { appendFile, mkdtemp, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { describe, expect, it, vi } from 'vitest';
@@ -106,7 +106,7 @@ describe('OrcdSession async Agent lifecycle', () => {
         }),
       }));
 
-      await writeFile(jsonlPath, JSON.stringify({
+      await appendFile(jsonlPath, JSON.stringify({
         type: 'queue-operation',
         operation: 'enqueue',
         content: [
@@ -118,7 +118,6 @@ describe('OrcdSession async Agent lifecycle', () => {
           '</task-notification>',
         ].join('\n'),
       }) + '\n');
-
       await run;
 
       expect(payloads).toContainEqual(expect.objectContaining({
