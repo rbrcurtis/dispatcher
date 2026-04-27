@@ -73,31 +73,25 @@ export class OrcdSession {
   }
 
   private rememberAgentToolDescriptions(event: unknown): void {
-    if (!this.isRecord(event) || event.type !== 'assistant') {
-      console.log(`[orcd:${this.id.slice(0, 8)}] skipping non-assistant event for tool description tracking`);
-      return;
-    }
+    if (this.isRecord(event) && event.type === 'assistant') {
+      const message = event.message;
+      if (this.isRecord(message) && Array.isArray(message.content)) {
+        for (const block of message.content) {
+          if (!this.isRecord(block) || block.type !== 'tool_use') continue;
 
-    const message = event.message;
-    if (!this.isRecord(message) || !Array.isArray(message.content)) {
-      console.log(`[orcd:${this.id.slice(0, 8)}] assistant event missing tool content`);
-      return;
-    }
+          const toolUseId = block.id;
+          if (typeof toolUseId !== 'string') continue;
 
-    for (const block of message.content) {
-      if (!this.isRecord(block) || block.type !== 'tool_use') continue;
+          const name = block.name;
+          const input = block.input;
+          if (!this.isRecord(input)) continue;
+          const description = input.description;
+          if (name !== 'Agent' && name !== 'Task') continue;
+          if (typeof description !== 'string' || !description.trim()) continue;
 
-      const toolUseId = block.id;
-      if (typeof toolUseId !== 'string') continue;
-
-      const name = block.name;
-      const input = block.input;
-      if (!this.isRecord(input)) continue;
-      const description = input.description;
-      if (name !== 'Agent' && name !== 'Task') continue;
-      if (typeof description !== 'string' || !description.trim()) continue;
-
-      this.agentToolDescriptions.set(toolUseId, description);
+          this.agentToolDescriptions.set(toolUseId, description.trim());
+        }
+      }
     }
   }
 
