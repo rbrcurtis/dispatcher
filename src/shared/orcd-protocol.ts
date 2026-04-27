@@ -53,6 +53,11 @@ export interface MemoryUpsertAction {
 export interface CompactAction {
   action: 'compact';
   sessionId: string;
+  cwd: string;
+  provider: string;
+  model: string;
+  contextWindow?: number;
+  summarizeThreshold?: number;
 }
 
 export type OrcdAction =

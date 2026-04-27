@@ -75,8 +75,18 @@ export async function handleAgentCompact(
       return;
     }
 
+    const cwd = await ensureWorktree(card);
+    trackSession(cardId, card.sessionId);
+
     callback({});
-    client.compact(card.sessionId);
+    client.compact({
+      sessionId: card.sessionId,
+      cwd,
+      provider: card.provider,
+      model: card.model,
+      contextWindow: card.contextWindow,
+      summarizeThreshold: card.summarizeThreshold,
+    });
   } catch (err) {
     console.error(`[session:${cardId}] agent:compact error:`, err);
     callback({ error: String(err instanceof Error ? err.message : err) });

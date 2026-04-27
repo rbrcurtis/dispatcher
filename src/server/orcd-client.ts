@@ -208,8 +208,15 @@ export class OrcdClient {
   /**
    * Start Orchestrel background compaction for a session.
    */
-  compact(sessionId: string): void {
-    this.send({ action: 'compact', sessionId });
+  compact(opts: {
+    sessionId: string;
+    cwd: string;
+    provider: string;
+    model: string;
+    contextWindow?: number;
+    summarizeThreshold?: number;
+  }): void {
+    this.send({ action: 'compact', ...opts });
   }
 
   /**

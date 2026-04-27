@@ -128,7 +128,7 @@ export class OrcdServer {
         this.handleMemoryUpsert(action);
         break;
       case 'compact':
-        this.handleCompact(action);
+        this.handleCompact(client, action);
         break;
     }
   }
@@ -261,12 +261,31 @@ export class OrcdServer {
     });
   }
 
-  private handleCompact(action: OrcdAction & { action: 'compact' }): void {
-    const session = this.store.get(action.sessionId);
+  private handleCompact(client: ClientState, action: OrcdAction & { action: 'compact' }): void {
+    let session = this.store.get(action.sessionId);
+    const hydrated = !session;
+
     if (!session) {
-      console.log(`[orcd:${action.sessionId.slice(0, 8)}:compact] handleCompact: session not found, ignoring`);
-      return;
+      session = new OrcdSession({
+        cwd: action.cwd,
+        model: action.model,
+        provider: action.provider,
+        sessionId: action.sessionId,
+        contextWindow: action.contextWindow,
+        summarizeThreshold: action.summarizeThreshold,
+      });
+      session.state = 'completed';
+      this.store.add(session);
+      this.attachLifecycleHooks(session);
+      console.log(`[orcd:${session.id.slice(0, 8)}:compact] handleCompact: rehydrated inactive session`);
     }
+
+    if (!client.subscriptions.has(session.id)) {
+      const cb: SessionEventCallback = (msg) => this.send(client, msg);
+      client.subscriptions.set(session.id, cb);
+      session.subscribe(cb);
+    }
+
     if (this.compacting.has(session.id) || this.pendingSummaries.has(session.id)) {
       console.log(`[orcd:${session.id.slice(0, 8)}:compact] handleCompact: already compacting or pending, ignoring`);
       return;
@@ -278,6 +297,11 @@ export class OrcdServer {
       console.error(`[orcd:${session.id.slice(0, 8)}:compact] manual start failed:`, err);
     }).finally(() => {
       this.compacting.delete(session.id);
+      if (hydrated) {
+        this.pendingSummaries.delete(session.id);
+        this.turnActive.delete(session.id);
+        this.store.remove(session.id);
+      }
     });
   }
 
@@ -390,12 +414,14 @@ export class OrcdServer {
 
     const hook: SessionEventCallback = (msg) => {
       if (msg.type === 'stream_event') {
-        this.turnActive.add(sid);
+        const event = msg.event as Record<string, unknown>;
+        if (event.type === 'message_start') {
+          this.turnActive.add(sid);
+        }
       }
 
       if (msg.type === 'result') {
         this.turnActive.delete(sid);
-
       }
 
       if (msg.type === 'context_usage') {

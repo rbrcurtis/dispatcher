@@ -111,11 +111,41 @@ describe('OrcdServer background compaction', () => {
     server['handleAction']({ socket: null as never, subscriptions: new Map() }, {
       action: 'compact',
       sessionId: 'session-1',
+      cwd: '/tmp/project',
+      provider: 'test',
+      model: 'test-model',
+      contextWindow: 100,
+      summarizeThreshold: 0.7,
     } satisfies CompactAction);
 
     await vi.waitFor(() => expect(compactorMocks.prepareCompaction).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(compactorMocks.applyCompaction).toHaveBeenCalledTimes(1));
     expect(emitBgcStarted).toHaveBeenCalledTimes(1);
     expect(emitCompactBoundary).toHaveBeenCalledTimes(1);
+  });
+
+  it('rehydrates inactive persisted sessions for explicit compact action', async () => {
+    compactorMocks.prepareCompaction.mockReset().mockResolvedValue(prepared);
+    compactorMocks.applyCompaction.mockReset().mockResolvedValue(applyResult);
+    const server = createServer();
+    const client = {
+      socket: { writable: true, write: vi.fn() } as never,
+      subscriptions: new Map(),
+    };
+
+    server['handleAction'](client, {
+      action: 'compact',
+      sessionId: 'session-1',
+      cwd: '/tmp/project',
+      provider: 'test',
+      model: 'test-model',
+      contextWindow: 100,
+      summarizeThreshold: 0.7,
+    } satisfies CompactAction);
+
+    await vi.waitFor(() => expect(compactorMocks.prepareCompaction).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(compactorMocks.applyCompaction).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(server.store.get('session-1')).toBeUndefined());
+    expect(client.subscriptions.has('session-1')).toBe(true);
   });
 });
