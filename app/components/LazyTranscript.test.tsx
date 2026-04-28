@@ -30,10 +30,15 @@ function setViewportMetrics(viewport: HTMLElement, metrics: { scrollHeight: numb
 
 describe('LazyTranscript auto-scroll', () => {
   let rafCallbacks: FrameRequestCallback[];
+  let resizeObservers: ResizeObserverCallback[];
 
   beforeEach(() => {
     rafCallbacks = [];
+    resizeObservers = [];
     vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) {
+        resizeObservers.push(callback);
+      }
       observe() {}
       unobserve() {}
       disconnect() {}
@@ -55,6 +60,10 @@ describe('LazyTranscript auto-scroll', () => {
     const callbacks = rafCallbacks;
     rafCallbacks = [];
     callbacks.forEach((callback) => callback(0));
+  }
+
+  function triggerResizeObservers() {
+    resizeObservers.forEach((callback) => callback([] as ResizeObserverEntry[], {} as ResizeObserver));
   }
 
   it('does not scroll to bottom when a new entry arrives and the user has scrolled up', () => {
@@ -121,5 +130,37 @@ describe('LazyTranscript auto-scroll', () => {
 
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 1250, behavior: 'auto' });
     expect(screen.getAllByTestId('message-block')).toHaveLength(4);
+  });
+
+  it('keeps transcript pinned to bottom while initial history content finishes sizing', () => {
+    const props = {
+      cardId: 1,
+      currentBlocks: [],
+      accentColor: null,
+      historyLoaded: true,
+      isStreaming: false,
+      showScrollButton: false,
+      onShowScrollButtonChange: vi.fn(),
+    };
+
+    const { container } = render(
+      <LazyTranscript {...props} conversation={conversation(3)} />,
+    );
+    const viewport = container.querySelector('[data-slot="scroll-area-viewport"]') as HTMLElement;
+    const scrollTo = vi.fn((options?: ScrollToOptions | number) => {
+      if (typeof options === 'object') viewport.scrollTop = Number(options.top);
+    });
+    viewport.scrollTo = scrollTo as HTMLDivElement['scrollTo'];
+
+    setViewportMetrics(viewport, { scrollHeight: 1000, clientHeight: 400, scrollTop: 0 });
+    act(flushAnimationFrames);
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1000, behavior: 'auto' });
+
+    scrollTo.mockClear();
+    setViewportMetrics(viewport, { scrollHeight: 1400, clientHeight: 400, scrollTop: 600 });
+    act(triggerResizeObservers);
+    act(flushAnimationFrames);
+
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1400, behavior: 'auto' });
   });
 });

@@ -50,6 +50,7 @@ export function LazyTranscript({
   const hasOlderRef = useRef(false);
   const itemsLenRef = useRef(0);
   const prevHistoryLoadedRef = useRef(false);
+  const initialBottomLockUntilRef = useRef(0);
   const [visibleCount, setVisibleCount] = useState(INITIAL_ROWS);
 
   const items = useMemo<ConversationEntry[]>(() => {
@@ -128,6 +129,7 @@ export function LazyTranscript({
     scrollMetricsRef.current = null;
     prependAnchorRef.current = null;
     prevHistoryLoadedRef.current = false;
+    initialBottomLockUntilRef.current = Date.now() + 500;
     scheduleScrollToBottom();
   }, [cardId, scheduleScrollToBottom]);
 
@@ -140,6 +142,7 @@ export function LazyTranscript({
     prevItemsLenRef.current = items.length;
     scrollMetricsRef.current = null;
     prependAnchorRef.current = null;
+    initialBottomLockUntilRef.current = Date.now() + 500;
     scheduleScrollToBottom();
   }, [historyLoaded, conversation.length, items.length, scheduleScrollToBottom]);
 
@@ -179,7 +182,13 @@ export function LazyTranscript({
     const el = contentRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      if (!isStreaming || !nearBottomRef.current || items.length === 0) return;
+      if (items.length === 0) return;
+      const withinInitialBottomLock = Date.now() < initialBottomLockUntilRef.current;
+      if (withinInitialBottomLock) {
+        scheduleScrollToBottom();
+        return;
+      }
+      if (!isStreaming || !nearBottomRef.current) return;
       scheduleScrollToBottom();
     });
     ro.observe(el);

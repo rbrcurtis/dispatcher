@@ -114,6 +114,12 @@ export class MessageAccumulator {
   private historyTurnCount = 0;
   private blockingSubagentToolIds = new Map<string, string>();
 
+  addCompactMarker(label: string, timestamp = Date.now()): void {
+    this.finalizeBlocks();
+    this.conversation.push({ kind: 'compact', label, timestamp });
+  }
+
+
   constructor() {
     makeAutoObservable<this, 'historyPendingResultTimestamp' | 'historyTurnCount' | 'blockingSubagentToolIds'>(this, {
       conversation: observable.shallow,

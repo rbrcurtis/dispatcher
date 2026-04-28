@@ -14,6 +14,7 @@ export interface SessionState {
   historyLoaded: boolean;
   contextTokens: number;
   contextWindow: number;
+  bgcInProgress: boolean;
 }
 
 function defaultSession(): SessionState {
@@ -27,6 +28,7 @@ function defaultSession(): SessionState {
     historyLoaded: false,
     contextTokens: 0,
     contextWindow: 200_000,
+    bgcInProgress: false,
   };
 }
 
@@ -76,6 +78,19 @@ export class SessionStore {
         s.status = 'running';
       }
 
+      if (sdkMsg.type === 'system') {
+        if (sdkMsg.subtype === 'bgc_started') {
+          s.bgcInProgress = true;
+        }
+        if (sdkMsg.subtype === 'compact_boundary') {
+          s.bgcInProgress = false;
+        }
+      }
+
+      if (sdkMsg.type === 'error' || sdkMsg.type === 'result') {
+        s.bgcInProgress = false;
+      }
+
       s.accumulator.handleMessage(sdkMsg);
     });
   }
@@ -113,6 +128,7 @@ export class SessionStore {
       if (data.contextWindow > 0) s.contextWindow = data.contextWindow;
 
       if (data.status === 'completed' || data.status === 'stopped' || data.status === 'errored') {
+        s.bgcInProgress = false;
         s.accumulator.clearSubagents();
         const stopInterval = this.stopIntervals.get(data.cardId);
         if (stopInterval !== undefined) {
@@ -128,6 +144,7 @@ export class SessionStore {
     runInAction(() => {
       const s = this.getOrCreate(cardId);
       s.active = false;
+      s.bgcInProgress = false;
       if (s.status === 'running' || s.status === 'starting') {
         s.status = 'completed';
       }
@@ -166,6 +183,11 @@ export class SessionStore {
   }
 
   async compactSession(cardId: number): Promise<void> {
+    const s = this.getOrCreate(cardId);
+    if (s.bgcInProgress) {
+      s.accumulator.addCompactMarker('Background compaction already in progress');
+      return;
+    }
     await this.ws().emit('agent:compact', { cardId });
   }
 

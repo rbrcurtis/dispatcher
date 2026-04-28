@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { ContextGauge } from './ContextGauge';
 
 describe('ContextGauge percent label', () => {
@@ -15,5 +15,20 @@ describe('ContextGauge percent label', () => {
     render(<ContextGauge percent={70} compacted={false} />);
 
     expect(screen.getByText('70')).toBeTruthy();
+  });
+
+  it('disables compact button when no compact action available', () => {
+    render(<ContextGauge percent={70} compacted={false} />);
+
+    expect(screen.getByTitle('Compact context').hasAttribute('disabled')).toBe(true);
+  });
+
+  it('opens confirm dialog when compact action is available', () => {
+    const onCompact = vi.fn();
+    render(<ContextGauge percent={70} compacted={false} onCompact={onCompact} />);
+
+    fireEvent.click(screen.getByTitle('Compact context'));
+
+    expect(screen.getByText('Compact context?')).toBeTruthy();
   });
 });
