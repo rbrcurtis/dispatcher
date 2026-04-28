@@ -53,7 +53,7 @@ function createSession() {
       cwd: '/tmp/project',
       model: 'test-model',
       provider: 'test',
-      summarizeThreshold: 0.7,
+      summarizeThreshold: 0.6,
       lastContextTokens: 80,
       lastContextWindow: 100,
       subscribe: vi.fn((cb: SessionEventCallback) => { hook = cb; }),
@@ -115,7 +115,7 @@ describe('OrcdServer background compaction', () => {
       provider: 'test',
       model: 'test-model',
       contextWindow: 100,
-      summarizeThreshold: 0.7,
+      summarizeThreshold: 0.6,
     } satisfies CompactAction);
 
     await vi.waitFor(() => expect(compactorMocks.prepareCompaction).toHaveBeenCalledTimes(1));
@@ -140,7 +140,7 @@ describe('OrcdServer background compaction', () => {
       provider: 'test',
       model: 'test-model',
       contextWindow: 100,
-      summarizeThreshold: 0.7,
+      summarizeThreshold: 0.6,
     } satisfies CompactAction);
 
     await vi.waitFor(() => expect(compactorMocks.prepareCompaction).toHaveBeenCalledTimes(1));

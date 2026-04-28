@@ -43,7 +43,7 @@ describe('handleAgentCompact', () => {
       provider: 'anthropic',
       model: 'sonnet',
       contextWindow: 200_000,
-      summarizeThreshold: 0.7,
+      summarizeThreshold: 0.6,
     });
     mockEnsureWorktree.mockResolvedValue('/tmp/project');
 
@@ -57,7 +57,7 @@ describe('handleAgentCompact', () => {
       provider: 'anthropic',
       model: 'sonnet',
       contextWindow: 200_000,
-      summarizeThreshold: 0.7,
+      summarizeThreshold: 0.6,
     });
   });
 });
