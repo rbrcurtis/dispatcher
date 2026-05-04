@@ -126,23 +126,6 @@ export default observer(function ProjectForm({ project, onDone }: ProjectFormPro
                 />
               </div>
 
-              {/* Provider */}
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Provider</label>
-                <Select value={providerID} onValueChange={handleProviderChange}>
-                  <SelectTrigger className="w-full">
-                    <span data-slot="select-value">{config.getProvider(providerID)?.label ?? providerID}</span>
-                  </SelectTrigger>
-                  <SelectContent position="popper" sideOffset={4}>
-                    {config.allProviders.map(([id, p]) => (
-                      <SelectItem key={id} value={id}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Color */}
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Color</label>
@@ -189,6 +172,23 @@ export default observer(function ProjectForm({ project, onDone }: ProjectFormPro
                   </label>
                 </div>
               )}
+
+              {/* Provider */}
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Provider</label>
+                <Select value={providerID} onValueChange={handleProviderChange}>
+                  <SelectTrigger className="w-full">
+                    <span data-slot="select-value">{config.getProvider(providerID)?.label ?? providerID}</span>
+                  </SelectTrigger>
+                  <SelectContent position="popper" sideOffset={4}>
+                    {config.allProviders.map(([id, p]) => (
+                      <SelectItem key={id} value={id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               {/* Default Model */}
               <div>
