@@ -23,6 +23,7 @@ interface Project {
   defaultModel: string;
   defaultThinkingLevel: 'off' | 'low' | 'medium' | 'high';
   providerID: string;
+  archived: boolean;
   memoryBaseUrl?: string | null;
   memoryApiKey?: string | null;
   userIds?: number[];
@@ -46,6 +47,7 @@ export default observer(function ProjectForm({ project, onDone }: ProjectFormPro
     project?.defaultThinkingLevel ?? 'high',
   );
   const [providerID, setProviderID] = useState(project?.providerID ?? 'anthropic');
+  const [archived, setArchived] = useState(project?.archived ?? false);
   const [memoryBaseUrl, setMemoryBaseUrl] = useState(project?.memoryBaseUrl ?? '');
   const [memoryApiKey, setMemoryApiKey] = useState(project?.memoryApiKey ?? '');
   const [pending, setPending] = useState(false);
@@ -80,6 +82,7 @@ export default observer(function ProjectForm({ project, onDone }: ProjectFormPro
       defaultModel,
       defaultThinkingLevel,
       providerID,
+      archived,
       memoryBaseUrl: memoryBaseUrl || null,
       memoryApiKey: memoryApiKey || null,
       userIds: selectedUserIds,
@@ -172,6 +175,13 @@ export default observer(function ProjectForm({ project, onDone }: ProjectFormPro
                   </label>
                 </div>
               )}
+
+              <div className="flex items-center gap-2">
+                <Checkbox id="archived" checked={archived} onCheckedChange={(checked) => setArchived(checked === true)} />
+                <label htmlFor="archived" className="text-sm font-medium text-muted-foreground">
+                  Archived
+                </label>
+              </div>
 
               {/* Provider */}
               <div>

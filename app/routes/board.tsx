@@ -125,6 +125,7 @@ const BoardLayout = observer(function BoardLayout() {
     resolvedCards,
     pinSlot,
     closeSlot,
+    releaseHotseat,
     unpinSlot,
     selectCard: hookSelectCard,
     dropCard,
@@ -215,12 +216,14 @@ const BoardLayout = observer(function BoardLayout() {
           setActiveModal(null);
         } else if (!isDesktop) {
           setMobileCardId(null);
+        } else if (columnSlots[0]?.type === 'manual' || resolvedCards.has(0)) {
+          releaseHotseat();
         }
       }
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [activeModal, isDesktop]);
+  }, [activeModal, isDesktop, columnSlots, resolvedCards, releaseHotseat]);
 
   // For outlet context: selectedCardId is still passed for backwards compat (slot 0)
   const selectedCardId = columnSlots[0]?.type === 'manual' ? columnSlots[0].cardId : null;
@@ -253,7 +256,7 @@ const BoardLayout = observer(function BoardLayout() {
           </nav>
           <SearchBar ref={searchRef} value={search} onChange={setSearch} />
           {/* Project filter */}
-          {projectStore.all.length > 0 && (
+          {(section === 'archive' ? projectStore.all : projectStore.active).length > 0 && (
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -285,7 +288,7 @@ const BoardLayout = observer(function BoardLayout() {
                   )}
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  {projectStore.all.map((p) => (
+                  {(section === 'archive' ? projectStore.all : projectStore.active).map((p) => (
                     <label
                       key={p.id}
                       className="flex items-center gap-2 px-2 py-1.5 rounded-sm hover:bg-accent cursor-pointer"
@@ -405,7 +408,11 @@ const BoardLayout = observer(function BoardLayout() {
                   onClose={() => setNewCardColumn(null)}
                 />
               ) : mobileCardId != null ? (
-                <CardDetail cardId={mobileCardId} onClose={() => setMobileCardId(null)} />
+                <CardDetail
+                  cardId={mobileCardId}
+                  onClose={() => setMobileCardId(null)}
+                  onPromptSent={() => releaseHotseat()}
+                />
               ) : null}
             </div>
           </>

@@ -17,6 +17,7 @@ type Props = {
   model: string;
   providerID: string;
   summarizeThreshold: number;
+  onPromptSent?: () => void;
 };
 
 export const SessionView = observer(function SessionView({
@@ -26,6 +27,7 @@ export const SessionView = observer(function SessionView({
   model,
   providerID,
   summarizeThreshold,
+  onPromptSent,
 }: Props) {
   const sessionStore = useSessionStore();
   const cardStore = useCardStore();
@@ -132,8 +134,10 @@ export const SessionView = observer(function SessionView({
   async function handleSend(message: string, files?: FileRef[]) {
     try {
       await sessionStore.sendMessage(cardId, message, files);
+      return true;
     } catch (err) {
       setNotification(err instanceof Error ? err.message : String(err));
+      return false;
     }
   }
 
@@ -279,6 +283,7 @@ export const SessionView = observer(function SessionView({
         onSend={handleSend}
         onStop={handleStop}
         onCompact={!!sessionId || sessionActive ? (bgcInProgress ? undefined : () => sessionStore.compactSession(cardId)) : undefined}
+        onPromptSent={onPromptSent}
         sendPending={false}
         contextPercent={contextPercent}
         compacted={compacted}
@@ -359,6 +364,7 @@ function PromptInput({
   onSend,
   onStop,
   onCompact,
+  onPromptSent,
   sendPending,
   contextPercent,
   compacted,
@@ -368,9 +374,10 @@ function PromptInput({
   isRunning: boolean;
   hasSession: boolean;
   isPending: boolean;
-  onSend: (message: string, files?: FileRef[]) => void | Promise<void>;
+  onSend: (message: string, files?: FileRef[]) => boolean | Promise<boolean>;
   onStop: () => void;
   onCompact?: () => void;
+  onPromptSent?: () => void;
   sendPending: boolean;
   contextPercent: number;
   compacted: boolean;
@@ -448,19 +455,22 @@ function PromptInput({
     if (!trimmed && files.length === 0) return;
 
     setUploadError(null);
+    let sent = false;
     if (files.length > 0) {
       try {
         const refs = await uploadFiles(files);
-        await onSend(trimmed || 'Please review the attached files.', refs);
+        sent = await onSend(trimmed || 'Please review the attached files.', refs);
       } catch {
         setUploadError('Failed to upload files');
         return;
       }
     } else {
-      await onSend(trimmed);
+      sent = await onSend(trimmed);
     }
+    if (!sent) return;
     updateText('');
     setFiles([]);
+    onPromptSent?.();
     // Blur AFTER send completes — send is near-instant (WebSocket) but
     // must finish before blur clears focus lock, so the card's column
     // update from the server triggers event-driven recalc cleanly.
