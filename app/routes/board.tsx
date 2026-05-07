@@ -118,6 +118,8 @@ const BoardLayout = observer(function BoardLayout() {
 
   const maxColumns = useMaxColumns(panelRef);
   const [focusedCardId, setFocusedCardId] = useState<number | null>(null);
+  const [promptFocusRequest, setPromptFocusRequest] = useState<{ cardId: number; seq: number } | null>(null);
+  const promptFocusSeq = useRef(0);
 
   const allCards = Array.from(cardStore.cards.values());
   const {
@@ -166,7 +168,7 @@ const BoardLayout = observer(function BoardLayout() {
     };
   }, []);
 
-  function selectCard(id: number | null) {
+  function selectCard(id: number | null, opts?: { focusPrompt?: boolean }) {
     setNewCardColumn(null);
     if (!isDesktop) {
       if (id != null && mobileCardId === id) {
@@ -177,6 +179,10 @@ const BoardLayout = observer(function BoardLayout() {
       return;
     }
     if (id === null) return;
+    if (opts?.focusPrompt) {
+      promptFocusSeq.current += 1;
+      setPromptFocusRequest({ cardId: id, seq: promptFocusSeq.current });
+    }
     hookSelectCard(id);
   }
 
@@ -362,7 +368,7 @@ const BoardLayout = observer(function BoardLayout() {
               search,
               projectFilter,
               selectedCardId,
-              selectCard,
+              selectCard: (id: number | null) => selectCard(id, { focusPrompt: true }),
               startNewCard,
               dropCard,
               onCardCreated,
@@ -449,6 +455,7 @@ const BoardLayout = observer(function BoardLayout() {
                 closeSlot={closeSlot}
                 unpinSlot={unpinSlot}
                 onCardCreated={onCardCreated}
+                promptFocusSeq={displayedCardId != null && promptFocusRequest?.cardId === displayedCardId ? promptFocusRequest.seq : null}
               />
             );
           })}
@@ -475,6 +482,7 @@ type ColumnSlotProps = {
   closeSlot: (index: number) => void;
   unpinSlot: (index: number) => void;
   onCardCreated: (cardId: number, projectId: number | null) => void;
+  promptFocusSeq: number | null;
 };
 
 const ColumnSlot = observer(function ColumnSlot({
@@ -492,6 +500,7 @@ const ColumnSlot = observer(function ColumnSlot({
   closeSlot,
   unpinSlot,
   onCardCreated,
+  promptFocusSeq,
 }: ColumnSlotProps) {
   const cardStore = useCardStore();
   const projectStore = useProjectStore();
@@ -597,6 +606,7 @@ const ColumnSlot = observer(function ColumnSlot({
             clearSlot={() => closeSlot(index)}
             slotIndex={index}
             pinned={pinProjectId != null}
+            promptFocusSeq={promptFocusSeq}
           />
         ) : pinProjectId != null ? (
           <div className="flex flex-col flex-1">

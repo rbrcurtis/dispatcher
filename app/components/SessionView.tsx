@@ -18,6 +18,7 @@ type Props = {
   providerID: string;
   summarizeThreshold: number;
   onPromptSent?: () => void;
+  promptFocusSeq?: number | null;
 };
 
 export const SessionView = observer(function SessionView({
@@ -28,6 +29,7 @@ export const SessionView = observer(function SessionView({
   providerID,
   summarizeThreshold,
   onPromptSent,
+  promptFocusSeq,
 }: Props) {
   const sessionStore = useSessionStore();
   const cardStore = useCardStore();
@@ -81,6 +83,11 @@ export const SessionView = observer(function SessionView({
     setCompacted(false);
     prevConvLen.current = 0; // ensure scroll-to-bottom fires for the new card
   }, [cardId]);
+
+  useEffect(() => {
+    if (promptFocusSeq == null) return;
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [promptFocusSeq]);
 
   // Clear isStarting on status transition
   useEffect(() => {

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionView } from './SessionView';
 import type { Card } from '../../src/shared/ws-protocol';
@@ -230,5 +231,31 @@ describe('SessionView prompt submission', () => {
       expect(sessionStore.sendMessage).toHaveBeenCalledWith(1011, 'Run the ferris wheel', undefined);
     });
     expect(onPromptSent).not.toHaveBeenCalled();
+  });
+
+  it('focuses the prompt textarea when promptFocusSeq changes', async () => {
+    setDefaultState();
+
+    const { rerender } = renderSessionView({ promptFocusSeq: 1 });
+    const textarea = screen.getByPlaceholderText('Enter a prompt to start a session...');
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(textarea);
+    });
+
+    rerender(
+      <SessionView
+        cardId={1011}
+        sessionId="8622c811-8f13-4b6e-9046-552a33ce879b"
+        model="gpt-5.5"
+        providerID="chatgpt"
+        summarizeThreshold={0.7}
+        promptFocusSeq={2}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(textarea);
+    });
   });
 });

@@ -32,6 +32,7 @@ type Props = {
   slotIndex?: number;
   pinned?: boolean;
   onPromptSent?: () => void;
+  promptFocusSeq?: number | null;
 };
 
 const STATUSES = ['backlog', 'ready', 'running', 'review', 'done', 'archive'] as const;
@@ -56,7 +57,15 @@ type Draft = {
   summarizeThreshold: number;
 };
 
-export const CardDetail = observer(function CardDetail({ cardId, onClose, clearSlot, slotIndex, pinned, onPromptSent }: Props) {
+export const CardDetail = observer(function CardDetail({
+  cardId,
+  onClose,
+  clearSlot,
+  slotIndex,
+  pinned,
+  onPromptSent,
+  promptFocusSeq,
+}: Props) {
   const cardStore = useCardStore();
   const projectStore = useProjectStore();
   const sessionStore = useSessionStore();
@@ -515,6 +524,7 @@ export const CardDetail = observer(function CardDetail({ cardId, onClose, clearS
             providerID={card.provider ?? cardProject?.providerID ?? 'anthropic'}
             summarizeThreshold={card.summarizeThreshold ?? 0}
             onPromptSent={onPromptSent}
+            promptFocusSeq={promptFocusSeq}
           />
         )}
       </div>
